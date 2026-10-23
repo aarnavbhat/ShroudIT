@@ -5,6 +5,10 @@ import {
   signBbs, 
   verifyBbsPresentationProof 
 } from '../src/lib/bbsEngine.js';
+import { 
+  evaluateTelemetryVector, 
+  simulateCrossServiceLinkability 
+} from '../src/lib/aiAnomalyEngine.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 
 const app = express();
@@ -226,6 +230,83 @@ app.get('/api/verifier/purposes', (req, res) => {
   });
 });
 
+// --- Auditor API: Simulate Collusion & Cross-Service Linkability ---
+app.post('/api/auditor/simulate-linkability', (req, res) => {
+  try {
+    const { numResidents, numServices, strategy } = req.body || {};
+    const results = simulateCrossServiceLinkability({
+      numResidents: numResidents || 6,
+      numServices: numServices || 4,
+      strategy: strategy || 'collusion_graph'
+    });
+    return res.json(results);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Auditor API: Isolation Forest Telemetry Anomaly Inference ---
+app.post('/api/auditor/anomaly-detect', (req, res) => {
+  try {
+    const { vector, telemetry } = req.body || {};
+    let featureVector = vector;
+
+    if (!featureVector && telemetry) {
+      featureVector = [
+        telemetry.requestsPerMin || 5.0,
+        telemetry.attributesDemanded || 1.0,
+        telemetry.nonceAgeSec || 10.0,
+        telemetry.isUnregisteredDid ? 1.0 : 0.0,
+        telemetry.burstScore || 0.05
+      ];
+    }
+
+    if (!featureVector || !Array.isArray(featureVector)) {
+      return res.status(400).json({ error: "Invalid vector. Expected 5-element numerical array." });
+    }
+
+    const evaluation = evaluateTelemetryVector(featureVector);
+    return res.json(evaluation);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Auditor API: Telemetry Log Feed ---
+app.get('/api/auditor/telemetry', (req, res) => {
+  const sampleEvents = [
+    {
+      id: "tel-01",
+      vector: [140.0, 1.0, 4.0, 1.0, 0.95],
+      name: "Silent Mass Issuance Attack",
+      ...evaluateTelemetryVector([140.0, 1.0, 4.0, 1.0, 0.95]),
+      timestamp: new Date(Date.now() - 120000).toISOString()
+    },
+    {
+      id: "tel-02",
+      vector: [3.0, 9.0, 12.0, 0.0, 0.1],
+      name: "Over-Asking Violation (DPDP §6)",
+      ...evaluateTelemetryVector([3.0, 9.0, 12.0, 0.0, 0.1]),
+      timestamp: new Date(Date.now() - 600000).toISOString()
+    },
+    {
+      id: "tel-03",
+      vector: [2.0, 1.0, 420.0, 0.0, 0.3],
+      name: "Stale Nonce Replay Attempt",
+      ...evaluateTelemetryVector([2.0, 1.0, 420.0, 0.0, 0.3]),
+      timestamp: new Date(Date.now() - 1800000).toISOString()
+    },
+    {
+      id: "tel-04",
+      vector: [5.0, 1.0, 6.0, 0.0, 0.05],
+      name: "Legitimate Metro Gate Tap",
+      ...evaluateTelemetryVector([5.0, 1.0, 6.0, 0.0, 0.05]),
+      timestamp: new Date().toISOString()
+    }
+  ];
+  return res.json({ telemetry: sampleEvents });
+});
+
 export default app;
 
 if (process.env.NODE_ENV !== 'test') {
@@ -238,6 +319,9 @@ if (process.env.NODE_ENV !== 'test') {
     console.log(`  - Challenge: GET  http://localhost:${PORT}/api/verifier/challenge`);
     console.log(`  - Verify:    POST http://localhost:${PORT}/api/verifier/verify`);
     console.log(`  - Purposes:  GET  http://localhost:${PORT}/api/verifier/purposes`);
+    console.log(`  - Simulate:  POST http://localhost:${PORT}/api/auditor/simulate-linkability`);
+    console.log(`  - Anomaly:   POST http://localhost:${PORT}/api/auditor/anomaly-detect`);
+    console.log(`  - Telemetry: GET  http://localhost:${PORT}/api/auditor/telemetry`);
     console.log(`==================================================`);
   });
 }

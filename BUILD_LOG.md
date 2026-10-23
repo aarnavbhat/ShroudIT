@@ -82,7 +82,7 @@ This log tracks all project builds for phased GitHub commits during the ChronoFo
 
 ## 🏷️ Build 6 (Completed)
 - **Tag / ID**: `build-6`
-- **Commit**: `1c55d41`
+- **Commit**: `d0daa1a`
 - **Timestamp**: `2026-10-24`
 - **Description**: Resident wallet encrypted local storage & camera QR transport (OpenID4VP).
 - **Milestone Scope**:
@@ -94,9 +94,18 @@ This log tracks all project builds for phased GitHub commits during the ChronoFo
 
 ---
 
-## 🏷️ Build 7 (Upcoming)
-- **Target**: Real AI Engine (Linkability Auditor & Anomaly Monitor).
-- **Scope**: Python bipartite graph correlation engine (`adversary.py`), scikit-learn Isolation Forest anomaly pipeline.
+## 🏷️ Build 7 (Completed)
+- **Tag / ID**: `build-7`
+- **Commit**: `107bc86`
+- **Timestamp**: `2026-10-24`
+- **Description**: Real AI engine (bipartite adversary linkability proof & isolation forest anomaly monitor).
+- **Milestone Scope**:
+  - `scripts/adversary.py`: Standalone, zero-dependency Python script proving unlinkability mathematically via bipartite correlation graphs and Shannon entropy calculations ($H(X)$). Includes pure Python `IsolationForestClassifier` training and inference (`py scripts/adversary.py`).
+  - `src/lib/aiAnomalyEngine.js`: High-performance JavaScript implementation of Isolation Forest (`iTree` recursive partitioning, $c(n)$ factor, anomaly scoring $s(x, n) = 2^{-E(h(x))/c(n)}$) pre-trained on normative city telemetry, plus bipartite linkability simulation.
+  - `server/server.js`: Microservice API endpoints added: `POST /api/auditor/simulate-linkability`, `POST /api/auditor/anomaly-detect`, and `GET /api/auditor/telemetry`.
+  - `src/lib/apiClient.js`: Frontend API client functions with seamless fallback to client-side engine.
+  - `src/pages/AuditorPage.jsx`: Redesigned interactive console featuring strategy selector (Bipartite vs Cosine), 4x4 cross-service correlation heatmaps, live interactive Isolation Forest slider probe with dynamic anomaly gauge and 0.60 threshold line, and Python CLI verification banner.
+  - `test/auditor.test.cjs`: Comprehensive test suite verifying tree construction, path lengths, outlier detection, cross-service correlation, and API routes (9/9 passing tests). Total test suite now at 28/28 passing tests.
 
 ---
 

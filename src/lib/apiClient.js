@@ -65,3 +65,56 @@ export async function requestCredentialIssuance(issuerDid, holderDid, credential
     return null;
   }
 }
+
+/**
+ * Run adversary cross-service linkability simulation via API
+ */
+export async function fetchLinkabilitySimulation(params = {}) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/auditor/simulate-linkability`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params)
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    // Handled by local fallback
+  }
+  return null;
+}
+
+/**
+ * Score telemetry vector through Isolation Forest via API
+ */
+export async function fetchAnomalyInference(vector) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/auditor/anomaly-detect`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vector })
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    // Handled by local fallback
+  }
+  return null;
+}
+
+/**
+ * Fetch telemetry event stream from Auditor service
+ */
+export async function fetchAuditorTelemetry() {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/auditor/telemetry`);
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    // Handled by local fallback
+  }
+  return null;
+}
