@@ -51,6 +51,7 @@ This log tracks all project builds for phased GitHub commits during the ChronoFo
 
 ## 🏷️ Build 4 (Completed)
 - **Tag / ID**: `build-4`
+- **Commit**: `936f92c`
 - **Timestamp**: `2026-10-24`
 - **Description**: Real BBS+ zero-knowledge cryptographic pairing engine & Ed25519 device binding.
 - **Milestone Scope**:
@@ -63,9 +64,19 @@ This log tracks all project builds for phased GitHub commits during the ChronoFo
 
 ---
 
-## 🏷️ Build 5 (Upcoming)
-- **Target**: Backend Microservices (Issuer & Verifier APIs).
-- **Scope**: FastAPI/Express backend, 256-bit nonce challenge generation with TTL, OpenID4VP pairing verification endpoint.
+## 🏷️ Build 5 (Completed)
+- **Tag / ID**: `build-5`
+- **Timestamp**: `2026-10-24`
+- **Description**: Backend microservices (Issuer & Verifier APIs with anti-replay nonce lifecycle).
+- **Milestone Scope**:
+  - `server/server.js`: Express microservice server running on port 4000.
+  - `POST /api/issuer/issue`: Multi-attribute credential issuance endpoint signing raw attributes with real BLS12-381 issuer private keys.
+  - `GET /api/verifier/challenge`: 256-bit cryptographic nonce challenge endpoint with 180s TTL and verifier DID binding.
+  - `POST /api/verifier/verify`: Presentation verification endpoint enforcing one-time nonce consumption (strict replay protection) and executing BLS12-381 pairing checks.
+  - `GET /api/verifier/purposes`: Registered verifier policy directory enforcing DPDP Act §6 data minimization.
+  - `src/lib/apiClient.js`: Frontend HTTP client connecting browser to backend API with automatic offline fallback.
+  - `test/server.test.cjs`: Automated backend API test suite (5/5 passing tests). Total test suite now at 19/19 passing tests.
+  - Convenience scripts added: `npm run server` and unified `npm test`.
 
 ---
 
