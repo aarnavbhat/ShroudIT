@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "compile": "hardhat compile --config hardhat.config.cjs",
+    "test:contracts": "hardhat test --config hardhat.config.cjs",
+    "node:dev": "hardhat node",
+    "deploy:local": "hardhat run scripts/deploy.cjs --network localhost"
   },
   "dependencies": {
     "clsx": "^2.1.1",

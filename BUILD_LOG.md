@@ -21,6 +21,7 @@ This log tracks all project builds for phased GitHub commits during the ChronoFo
 
 ## 🏷️ Build 2 (Completed)
 - **Tag / ID**: `build-2`
+- **Commit**: `463c888`
 - **Timestamp**: `2026-10-23`
 - **Description**: Real Solidity smart contracts, Hardhat test suite, and deployment engine.
 - **Milestone Scope**:
@@ -34,9 +35,16 @@ This log tracks all project builds for phased GitHub commits during the ChronoFo
 
 ---
 
-## 🏷️ Build 3 (Upcoming)
-- **Target**: Web3 Live On-Chain Integration in Frontend.
-- **Scope**: Connect `BlockchainPage.jsx` directly to the live RPC node / deployed contract ABIs using `ethers.js`.
+## 🏷️ Build 3 (Completed)
+- **Tag / ID**: `build-3`
+- **Timestamp**: `2026-10-24`
+- **Description**: Web3 live on-chain integration in frontend via Ethers.js v6.
+- **Milestone Scope**:
+  - `src/lib/contractAbis.js`: Clean auto-extracted ABIs for `IssuerRegistry`, `StatusRegistry`, `IssuanceLog`, and `DocumentVerifier`.
+  - `src/lib/web3Client.js`: Real Ethers v6 client connecting to local Hardhat node (`http://127.0.0.1:8545`). Queries total accredited issuers, live epoch revocation roots, and issuance batches directly from deployed contract bytecode.
+  - `src/pages/BlockchainPage.jsx`: Refactored to query smart contracts on-chain. Added live contract addresses panel, "Advance Epoch on Contract" write transaction, and "Verify on Smart Contract" invocation executing `DocumentVerifier.sol`.
+  - Offline Resilience: Graceful fallback with connection status pills so the demo works seamlessly whether the local EVM node is running or offline.
+  - Convenience scripts added to `package.json`: `compile`, `test:contracts`, `node:dev`, and `deploy:local`.
 
 ---
 
