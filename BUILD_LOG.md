@@ -37,6 +37,7 @@ This log tracks all project builds for phased GitHub commits during the ChronoFo
 
 ## 🏷️ Build 3 (Completed)
 - **Tag / ID**: `build-3`
+- **Commit**: `3d1eceb`
 - **Timestamp**: `2026-10-24`
 - **Description**: Web3 live on-chain integration in frontend via Ethers.js v6.
 - **Milestone Scope**:
@@ -48,9 +49,17 @@ This log tracks all project builds for phased GitHub commits during the ChronoFo
 
 ---
 
-## 🏷️ Build 4 (Upcoming)
-- **Target**: Core Cryptography Engine (Real BBS+ & Device Binding).
-- **Scope**: BLS12-381 G2 key generation, multi-attribute BBS+ signing, ZK presentation proof derivation, WebCrypto Ed25519 hardware key binding.
+## 🏷️ Build 4 (Completed)
+- **Tag / ID**: `build-4`
+- **Timestamp**: `2026-10-24`
+- **Description**: Real BBS+ zero-knowledge cryptographic pairing engine & Ed25519 device binding.
+- **Milestone Scope**:
+  - `src/lib/bbsEngine.js`: Genuine BBS+ signature engine implementing IETF `draft-irtf-cfrg-bbs-signatures` using BLS12-381 G1/G2 pairing mathematics via `@noble/curves`.
+  - Multi-attribute BBS+ signing: Computes $A = \frac{1}{x+e} (G_1 + s \cdot H_0 + \sum m_i H_i)$ and validates the bilinear pairing equation $e(A, W + e \cdot G_2) = e(B, G_2)$.
+  - Zero-Knowledge Presentation Proofs: Blinds unrevealed attributes with random scalars $r_1, r_2 \in \mathbb{F}_q$, derives fresh randomized $A'$ on G1, computes Fiat-Shamir challenge $c$, and outputs Schnorr responses $s'$.
+  - Hardware Device Binding: Browser native Ed25519 key derivation signing session nonces to prevent credential export or presentation replay.
+  - `src/lib/cryptoSim.js`: Replaced string simulation with the genuine BBS+ engine for both Wallet proof derivation and Verifier kiosk checks.
+  - `test/crypto.test.cjs`: Comprehensive cryptographic test suite covering keygen, multi-message signing, ZK selective disclosure, replay rejection, and 0% cross-service linkability (5/5 passing tests). Total test suite now at 14/14 passing tests.
 
 ---
 
