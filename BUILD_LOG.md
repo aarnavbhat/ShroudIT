@@ -4,8 +4,9 @@ This log tracks all project builds for phased GitHub commits during the ChronoFo
 
 ---
 
-## 🏷️ Build 1 (Current Checkpoint)
+## 🏷️ Build 1 (Completed)
 - **Tag / ID**: `build-1`
+- **Commit**: `d965058`
 - **Timestamp**: `2026-10-23`
 - **Description**: Initial functional frontend prototype & interactive cryptographic simulation.
 - **Milestone Scope**:
@@ -18,18 +19,51 @@ This log tracks all project builds for phased GitHub commits during the ChronoFo
 
 ---
 
-## 🏷️ Build 2 (Upcoming)
-- **Target**: Real Smart Contracts & Local Blockchain Deployment (Hardhat/Foundry).
-- **Scope**: `IssuerRegistry.sol`, `StatusRegistry.sol`, `IssuanceLog.sol`, deploy scripts, local Hardhat node.
+## 🏷️ Build 2 (Completed)
+- **Tag / ID**: `build-2`
+- **Timestamp**: `2026-10-23`
+- **Description**: Real Solidity smart contracts, Hardhat test suite, and deployment engine.
+- **Milestone Scope**:
+  - `contracts/IssuerRegistry.sol`: Maps `did:shroud:...` to public key byte arrays and authorized schema hashes. Owner-gated accreditation and instant revocation.
+  - `contracts/StatusRegistry.sol`: Anchors epoch-specific revocation Merkle roots (`bytes32`) and active/revoked counters for zero-query-leakage private revocation checks.
+  - `contracts/IssuanceLog.sol`: Append-only batch commit log linking accredited issuers to batch roots and counts, preventing silent mass fake credential issuance.
+  - `contracts/DocumentVerifier.sol`: Cryptographic Merkle tree inclusion path validator for salted QR / physical training certificates.
+  - `hardhat.config.cjs`: Hardhat 2.22 / Solidity 0.8.24 configuration with optimizer enabled.
+  - `test/ShroudIT.test.cjs`: Comprehensive test suite verifying all 4 smart contracts (9 passing tests).
+  - `scripts/deploy.cjs`: Automated deployment script seeding Karnataka CeG, BMTC, Social Welfare, and KDEM authorities, anchoring Epoch #142 root, and outputting `src/lib/deployedContracts.json`.
 
 ---
 
 ## 🏷️ Build 3 (Upcoming)
-- **Target**: Backend Services & Real BBS+ Cryptography Engine.
-- **Scope**: FastAPI/Node.js backend, real BLS12-381 BBS+ keypair generation, blinded proof verification, Ed25519 device keys.
+- **Target**: Web3 Live On-Chain Integration in Frontend.
+- **Scope**: Connect `BlockchainPage.jsx` directly to the live RPC node / deployed contract ABIs using `ethers.js`.
 
 ---
 
 ## 🏷️ Build 4 (Upcoming)
-- **Target**: Real AI Models & Adversary Graph Engine.
-- **Scope**: scikit-learn Isolation Forest pipeline, graph linkability attack engine, live camera QR scanning.
+- **Target**: Core Cryptography Engine (Real BBS+ & Device Binding).
+- **Scope**: BLS12-381 G2 key generation, multi-attribute BBS+ signing, ZK presentation proof derivation, WebCrypto Ed25519 hardware key binding.
+
+---
+
+## 🏷️ Build 5 (Upcoming)
+- **Target**: Backend Microservices (Issuer & Verifier APIs).
+- **Scope**: FastAPI/Express backend, 256-bit nonce challenge generation with TTL, OpenID4VP pairing verification endpoint.
+
+---
+
+## 🏷️ Build 6 (Upcoming)
+- **Target**: Resident Wallet Local Storage & Real Transport (QR Scanning).
+- **Scope**: IndexedDB encrypted storage, dynamic binary QR code rendering, camera scanner integration (`html5-qrcode`).
+
+---
+
+## 🏷️ Build 7 (Upcoming)
+- **Target**: Real AI Engine (Linkability Auditor & Anomaly Monitor).
+- **Scope**: Python bipartite graph correlation engine (`adversary.py`), scikit-learn Isolation Forest anomaly pipeline.
+
+---
+
+## 🏷️ Build 8 (Upcoming)
+- **Target**: End-to-End Hardening, Offline Mode & Judge Demo Runthrough.
+- **Scope**: Full integration test, presentation mode toggle, disaster-recovery offline fallback, and final judge walkthrough.
