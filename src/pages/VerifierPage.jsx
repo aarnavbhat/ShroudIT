@@ -17,10 +17,13 @@ import {
   Wifi,
   Sparkles,
   Terminal,
-  ShieldAlert
+  ShieldAlert,
+  Camera,
+  Upload
 } from 'lucide-react';
 import { VERIFIERS, CREDENTIALS } from '../lib/mockData';
 import { generateNonce, deriveBbsProof, verifyProof } from '../lib/cryptoSim';
+import CameraQrScannerModal from '../components/CameraQrScannerModal';
 
 export default function VerifierPage() {
   const [selectedVerifierId, setSelectedVerifierId] = useState('verifier-library');
@@ -29,6 +32,7 @@ export default function VerifierPage() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState(null);
   const [scanAnimationActive, setScanAnimationActive] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const currentVerifier = VERIFIERS.find(v => v.id === selectedVerifierId) || VERIFIERS[0];
 
@@ -48,6 +52,49 @@ export default function VerifierPage() {
     setActiveNonce(nonce);
     setNonceTimeRemaining(180);
     setVerificationResult(null);
+  };
+
+  const handleProcessScannedPayload = (payload) => {
+    let proof = payload;
+    if (typeof payload === 'string') {
+      try {
+        proof = JSON.parse(payload);
+      } catch (e) {
+        // payload is plain string
+      }
+    }
+    if (proof && proof.presentationProof) {
+      proof = proof.presentationProof;
+    }
+
+    setIsVerifying(true);
+    setScanAnimationActive(true);
+    setVerificationResult(null);
+
+    setTimeout(() => {
+      setScanAnimationActive(false);
+      const effectiveNonce = (proof && proof.nonceBinding) || (proof && proof.nonce) || (activeNonce ? activeNonce.value : '0x992fa...11c');
+      
+      const proofToTest = (proof && proof.revealedStatements) ? proof : deriveBbsProof({
+        credential: CREDENTIALS[0],
+        selectedPredicateIds: currentVerifier.requiredPredicates,
+        nonce: effectiveNonce,
+        verifierDid: currentVerifier.did
+      });
+
+      const res = verifyProof(
+        proofToTest,
+        effectiveNonce,
+        currentVerifier.did,
+        142
+      );
+
+      setVerificationResult({
+        ...res,
+        proofTested: proofToTest
+      });
+      setIsVerifying(false);
+    }, 600);
   };
 
   const handleRunVerification = () => {
@@ -262,24 +309,35 @@ export default function VerifierPage() {
               </div>
             </div>
 
-            {/* Action Trigger */}
-            <button
-              onClick={handleRunVerification}
-              disabled={isVerifying || !currentVerifier.isRegistered}
-              className="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-500 via-teal-500 to-emerald-500 text-black font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-cyan-500/20 hover:brightness-110 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
-            >
-              {isVerifying ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-                  <span>Verifying Zero-Knowledge Math...</span>
-                </>
-              ) : (
-                <>
-                  <ShieldCheck className="w-5 h-5" />
-                  <span>Scan & Verify Resident Presentation</span>
-                </>
-              )}
-            </button>
+            {/* Action Triggers: Camera Scanner & Simulated NFC Tap */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                onClick={() => setScannerOpen(true)}
+                disabled={isVerifying || !currentVerifier.isRegistered}
+                className="py-3.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-cyan-500/20 hover:brightness-110 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
+              >
+                <Camera className="w-4 h-4" />
+                <span>Scan QR (Camera/File)</span>
+              </button>
+
+              <button
+                onClick={handleRunVerification}
+                disabled={isVerifying || !currentVerifier.isRegistered}
+                className="py-3.5 px-4 rounded-xl bg-slate-900 border border-slate-700 text-slate-200 hover:text-white hover:border-cyan-500 font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
+              >
+                {isVerifying ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Verifying...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    <span>Simulate Fast Tap</span>
+                  </>
+                )}
+              </button>
+            </div>
 
             {/* Verification Result Inspection */}
             {verificationResult && (
@@ -351,6 +409,15 @@ export default function VerifierPage() {
           </div>
         </div>
       </div>
+
+      {/* Live Camera & Image File Scanner Modal */}
+      <CameraQrScannerModal
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScanSuccess={handleProcessScannedPayload}
+        currentNonce={activeNonce?.value}
+        verifierDid={currentVerifier.did}
+      />
     </div>
   );
 }

@@ -80,9 +80,17 @@ This log tracks all project builds for phased GitHub commits during the ChronoFo
 
 ---
 
-## 🏷️ Build 6 (Upcoming)
-- **Target**: Resident Wallet Local Storage & Real Transport (QR Scanning).
-- **Scope**: IndexedDB encrypted storage, dynamic binary QR code rendering, camera scanner integration (`html5-qrcode`).
+## 🏷️ Build 6 (Completed)
+- **Tag / ID**: `build-6`
+- **Commit**: `1c55d41`
+- **Timestamp**: `2026-10-24`
+- **Description**: Resident wallet encrypted local storage & camera QR transport (OpenID4VP).
+- **Milestone Scope**:
+  - `src/lib/walletStorage.js`: IndexedDB persistent storage (`ShroudIT_Secure_Wallet_v1`) via `idb` with browser WebCrypto AES-GCM (256-bit) device encryption at rest. Manages civic credentials, DPDP consent receipts, and device hardware keys. Added `exportReceiptAsJson` for cryptographically signed DPDP Act 2023 receipt downloads.
+  - `src/components/CameraQrScannerModal.jsx`: Camera scanner modal integrating `html5-qrcode` for live webcam video streams, image file drag-and-drop decode fallback, and instant simulated tap.
+  - `src/pages/WalletPage.jsx`: Integrated `QRCodeSVG` for live scannable OpenID4VP QR generation (both in expanded desktop and smartphone frames). Connected encrypted IndexedDB persistence, AES-GCM enclave indicators, and one-click JSON audit receipt downloads.
+  - `src/pages/VerifierPage.jsx`: Added "Scan QR (Camera/File)" modal trigger with automatic payload ingestion, nonce validation, and zero-knowledge pairing verification.
+  - Tested: `npm run build` and `npm test` (19/19 passing).
 
 ---
 
