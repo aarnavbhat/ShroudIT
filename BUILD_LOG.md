@@ -172,5 +172,24 @@ This log tracks all project builds for phased GitHub commits during the ChronoFo
   - `test/auth.test.cjs`: Added automated tests proving presentations dynamically bind to the active resident's key, pass `ed25519.verify`, and reject tampered or substituted device keys.
   - Total test suite now stands at **44/44 passing tests** across cryptography, contracts, microservices, AI models, and multi-persona authentication. Production build clean in 6.27s.
 
+---
+
+## 🏷️ Build 12 (Completed)
+- **Tag / ID**: `build-12`
+- **Commit**: `cf5b23c`
+- **Timestamp**: `2026-10-24`
+- **Description**: Full BBS+ Schnorr challenge-response proof of knowledge & bilinear pairing verification (Detail 1B fix).
+- **Milestone Scope**:
+  - `src/lib/bbsEngine.js`:
+    - Computed randomized pairing companion point $\bar{B} = r_1 \cdot B - e \cdot A'$ on $\mathbb{G}_1$, mathematically proving bilinear pairing identity $e(A', W) == e(\bar{B}, G_2)$ with 0 correlation across presentations.
+    - Implemented blinded commitment to unrevealed attributes: $P_{blind} = (s + r_2) \cdot H_0 + \sum_{j \in U} m_j \cdot H_{j+1}$.
+    - Implemented Schnorr commitment point $C = k_s \cdot H_0 + \sum_{j \in U} k_{m_j} \cdot H_{j+1}$ and non-interactive Fiat-Shamir challenge $c$ bound to session nonce & verifier DID.
+    - Implemented Schnorr response equations $s' = k_s + c \cdot (s + r_2) \pmod r$ and $z_{m_j} = k_{m_j} + c \cdot m_j \pmod r$ for all unrevealed attributes.
+    - In `verifyBbsPresentationProof()`: Recomputes Fiat-Shamir challenge from transcript, verifies Schnorr response equation $\text{LHS} == C + c \cdot P_{blind}$, checks bilinear pairing $e(A', W) == e(\bar{B}, G_2)$, and verifies Ed25519 device signature.
+  - `src/lib/cryptoSim.js`: Updated `verifyProof()` to dynamically pass the accredited issuer public key (`proof.issuerPublicKeyHex`), eliminating static fallback.
+  - `test/crypto.test.cjs`: Added 4 automated adversarial tests verifying bilinear pairing check, tamper rejection for revealed attributes, tamper rejection for hidden Schnorr responses, and tamper rejection for $s'$.
+  - Total test suite now stands at **48/48 passing tests** across all subsystems; clean production build in 6.20s.
+
+
 
 

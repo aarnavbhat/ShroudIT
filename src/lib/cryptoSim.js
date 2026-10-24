@@ -144,7 +144,7 @@ export function verifyProof(proof, expectedNonce, expectedVerifierDid, currentEp
       proof: proof.rawProof,
       expectedNonce,
       expectedVerifierDid,
-      issuerPublicKeyHex: DEFAULT_ISSUER.publicKeyHex
+      issuerPublicKeyHex: proof.issuerPublicKeyHex || DEFAULT_ISSUER.publicKeyHex
     });
 
     if (!realVerify.valid) {

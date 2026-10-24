@@ -127,4 +127,131 @@ describe("ShroudIT Core Cryptographic Engine (BBS+ BLS12-381 & Ed25519)", functi
     expect(proof1.C_hex).to.not.equal(proof2.C_hex);
     expect(proof1.challenge).to.not.equal(proof2.challenge);
   });
+
+  it("6. should verify bilinear pairing e(A', W) == e(B_bar, G2) and reject adversarial issuer public key", function () {
+    const issuer = bbs.generateIssuerKeyPair();
+    const adversaryIssuer = bbs.generateIssuerKeyPair();
+    const messages = ["Aarav S. Rao", "2003-08-14", "over_18:true", "resident_blr:true"];
+    const signature = bbs.signBbs(issuer.privateKey, messages);
+    const nonce = "0xsession_challenge_998877";
+    const verifierDid = "did:shroud:verifier-transit-gate";
+
+    const proof = bbs.deriveBbsPresentationProof({
+      signature,
+      messages,
+      revealedIndices: [2, 3], // Only booleans revealed
+      nonce,
+      verifierDid
+    });
+
+    // Valid presentation against genuine issuer public key
+    const validResult = bbs.verifyBbsPresentationProof({
+      proof,
+      expectedNonce: nonce,
+      expectedVerifierDid: verifierDid,
+      issuerPublicKeyHex: issuer.publicKeyHex
+    });
+    expect(validResult.valid).to.equal(true);
+    expect(validResult.cryptographicEngine).to.include("BLS12-381 Bilinear Pairing");
+
+    // Adversarial presentation against rogue issuer public key
+    const rogueResult = bbs.verifyBbsPresentationProof({
+      proof,
+      expectedNonce: nonce,
+      expectedVerifierDid: verifierDid,
+      issuerPublicKeyHex: adversaryIssuer.publicKeyHex
+    });
+    expect(rogueResult.valid).to.equal(false);
+    expect(rogueResult.reason).to.include("Bilinear pairing verification failed");
+  });
+
+  it("7. should reject presentation proof if adversary tampers with revealed attribute values", function () {
+    const issuer = bbs.generateIssuerKeyPair();
+    const messages = ["Aarav S. Rao", "2003-08-14", "over_18:true", "resident_blr:true"];
+    const signature = bbs.signBbs(issuer.privateKey, messages);
+    const nonce = "0xsession_challenge_tamper_rev";
+    const verifierDid = "did:shroud:verifier-clinic";
+
+    const proof = bbs.deriveBbsPresentationProof({
+      signature,
+      messages,
+      revealedIndices: [2, 3],
+      nonce,
+      verifierDid
+    });
+
+    // Attacker modifies revealed predicate value from over_18:true to over_18:false
+    const tamperedProof = JSON.parse(JSON.stringify(proof));
+    tamperedProof.revealedValues[0].value = "over_18:false";
+
+    const result = bbs.verifyBbsPresentationProof({
+      proof: tamperedProof,
+      expectedNonce: nonce,
+      expectedVerifierDid: verifierDid,
+      issuerPublicKeyHex: issuer.publicKeyHex
+    });
+
+    expect(result.valid).to.equal(false);
+    expect(result.reason).to.include("Fiat-Shamir challenge verification failed");
+  });
+
+  it("8. should reject presentation proof if adversary tampers with hidden attribute Schnorr response", function () {
+    const issuer = bbs.generateIssuerKeyPair();
+    const messages = ["Aarav S. Rao", "2003-08-14", "over_18:true", "resident_blr:true"];
+    const signature = bbs.signBbs(issuer.privateKey, messages);
+    const nonce = "0xsession_challenge_schnorr_hidden";
+    const verifierDid = "did:shroud:verifier-library";
+
+    const proof = bbs.deriveBbsPresentationProof({
+      signature,
+      messages,
+      revealedIndices: [2, 3],
+      nonce,
+      verifierDid
+    });
+
+    // Attacker tampers with the Schnorr response for the hidden name attribute
+    const tamperedProof = JSON.parse(JSON.stringify(proof));
+    tamperedProof.hiddenResponses[0].response = (BigInt("0x" + tamperedProof.hiddenResponses[0].response) + 1n).toString(16);
+
+    const result = bbs.verifyBbsPresentationProof({
+      proof: tamperedProof,
+      expectedNonce: nonce,
+      expectedVerifierDid: verifierDid,
+      issuerPublicKeyHex: issuer.publicKeyHex
+    });
+
+    expect(result.valid).to.equal(false);
+    expect(result.reason).to.include("Schnorr challenge-response proof invalid");
+  });
+
+  it("9. should reject presentation proof if adversary tampers with blinding scalar response s'", function () {
+    const issuer = bbs.generateIssuerKeyPair();
+    const messages = ["Aarav S. Rao", "2003-08-14", "over_18:true", "resident_blr:true"];
+    const signature = bbs.signBbs(issuer.privateKey, messages);
+    const nonce = "0xsession_challenge_schnorr_s_prime";
+    const verifierDid = "did:shroud:verifier-library";
+
+    const proof = bbs.deriveBbsPresentationProof({
+      signature,
+      messages,
+      revealedIndices: [2, 3],
+      nonce,
+      verifierDid
+    });
+
+    // Attacker tampers with s_prime
+    const tamperedProof = JSON.parse(JSON.stringify(proof));
+    tamperedProof.s_prime = (BigInt("0x" + tamperedProof.s_prime) + 1n).toString(16);
+
+    const result = bbs.verifyBbsPresentationProof({
+      proof: tamperedProof,
+      expectedNonce: nonce,
+      expectedVerifierDid: verifierDid,
+      issuerPublicKeyHex: issuer.publicKeyHex
+    });
+
+    expect(result.valid).to.equal(false);
+    expect(result.reason).to.include("Schnorr challenge-response proof invalid");
+  });
 });
