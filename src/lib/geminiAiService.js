@@ -5,9 +5,12 @@
  */
 
 const GEMINI_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-1.5-flash',
-  'gemini-1.5-pro'
+  'gemini-3.5-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-3.7-flash',
+  'gemini-3.6-flash',
+  'gemini-3.8-flash',
+  'gemini-2.5-flash'
 ];
 
 /**
@@ -154,8 +157,8 @@ export async function queryGeminiDocumentAnalysis({ document, rawText, apiKey })
       };
     } catch (err) {
       lastError = err;
-      // If error is 404 or model not found, continue to next model in list
-      if (err.message.includes('404') || err.message.includes('not found')) {
+      // If error is 404/503 or model not found/temporarily unavailable, continue to next model in list
+      if (err.message.includes('404') || err.message.includes('503') || err.message.includes('not found') || err.message.includes('unavailable') || err.message.includes('no longer available')) {
         continue;
       }
       // If error is invalid API key or permission denied, throw immediately

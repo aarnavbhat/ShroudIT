@@ -43,9 +43,9 @@ export default function DocumentIngestionPage() {
   // Gemini AI Engine configuration state
   const [geminiApiKey, setGeminiApiKey] = useState(() => {
     try {
-      return localStorage.getItem('shroudit_gemini_api_key') || '';
+      return localStorage.getItem('shroudit_gemini_api_key') || (import.meta.env && import.meta.env.VITE_GEMINI_API_KEY) || '';
     } catch (e) {
-      return '';
+      return (import.meta.env && import.meta.env.VITE_GEMINI_API_KEY) || '';
     }
   });
   const [showApiKey, setShowApiKey] = useState(false);
