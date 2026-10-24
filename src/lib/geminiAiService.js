@@ -40,9 +40,14 @@ MANDATORY STATUTORY ELIGIBILITY & PURPOSE LIMITATION RULES:
    - If it is a Student / Educational / Transit Pass document, formulate student predicates like "Accredited Student" (id: "valid_student") and "Transit Concession" (id: "tier1_concession").
    - If it is a Cybersecurity / Technical Skill Certification, formulate skill predicates like "Certified Cybersecurity Analyst" (id: "certified_analyst") and "Valid Skill Attestation" (id: "cert_valid_2026").
    - DO NOT grant cybersecurity analyst predicates to income or student certificates!
-4. Domicile / Jurisdiction:
-   - If document mentions Bengaluru / BBMP, grant "Bengaluru Resident" (id: "blr_resident").
-   - If Karnataka, grant "Karnataka Domicile" (id: "karnataka_domicile").
+4. Dynamic Location & Domicile Predicates (Any City & State):
+   - You MUST extract the specific city, municipality, district, or state provided in the document (e.g. Mumbai, Delhi, Hyderabad, Chennai, Pune, Kolkata, Jaipur, Ahmedabad, Lucknow, Bengaluru, Mysuru, or any other city or state/region).
+   - Dynamically create zero-knowledge predicates for whatever city and state are in the document!
+     * If document mentions Mumbai / Maharashtra: generate 'Mumbai Resident' (id: 'mumbai_resident') and 'Maharashtra Domicile' (id: 'maharashtra_domicile').
+     * If document mentions Hyderabad / Telangana: generate 'Hyderabad Resident' (id: 'hyderabad_resident') and 'Telangana Domicile' (id: 'telangana_domicile').
+     * If document mentions Delhi: generate 'Delhi Resident' (id: 'delhi_resident') and 'Delhi Domicile' (id: 'delhi_domicile').
+     * If document mentions any other city or state (e.g. Pune, Jaipur, Chennai, Kolkata, Ahmedabad), dynamically create '<City> Resident' and '<State> Domicile' predicates.
+     * DO NOT default to Bengaluru or Karnataka if a different city or state is provided in the document! Accurately reflect the location stated in the document.
 
 Respond with STRICT JSON only matching this schema:
 {

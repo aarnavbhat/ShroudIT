@@ -86,6 +86,27 @@ export const SAMPLE_GOV_DOCUMENTS = [
     }
   },
   {
+    id: "doc-mumbai-residence",
+    title: "Mumbai Municipal Domicile & Asset Certificate",
+    department: "Brihanmumbai Municipal Corporation (BMC), Maharashtra",
+    expectedOutcome: "Generates 'Mumbai Resident' & 'Maharashtra Domicile' Categories",
+    data: {
+      documentType: "Municipal Domicile & Income Attestation",
+      documentNumber: "MH-BMC-2026-MUM-5519",
+      issuer: "Brihanmumbai Municipal Corporation (BMC), Maharashtra",
+      issuedTo: "Rohan M. Kulkarni",
+      nationalId: "XXXX-XXXX-8812",
+      annualIncome: 280000,
+      city: "Mumbai",
+      state: "Maharashtra",
+      domicile: "Andheri West, Mumbai, Maharashtra",
+      dob: "2001-11-22",
+      issuedAt: "2026-04-10",
+      validUntil: "2027-03-31",
+      signature: `${GOV_SEAL_PREFIX}${GOV_PUBLIC_KEY_BASE64}`
+    }
+  },
+  {
     id: "doc-forged-tampered",
     title: "Forged / Tampered Document (Invalid Signature)",
     department: "Fake Municipal Service (Adversarial Probe)",

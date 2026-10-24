@@ -67,6 +67,100 @@ export function calculateAge(dobStr) {
   return age;
 }
 
+export const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+  "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
+  "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
+  "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+  "Delhi", "Jammu and Kashmir", "Ladakh", "Puducherry", "Chandigarh"
+];
+
+export const KNOWN_CITIES = [
+  { name: "Bengaluru", regex: /\b(bengaluru|bangalore|bbmp)\b/i, state: "Karnataka", id: "blr" },
+  { name: "Mumbai", regex: /\b(mumbai|bombay|bmc)\b/i, state: "Maharashtra", id: "mumbai" },
+  { name: "Delhi", regex: /\b(delhi|new delhi|ncr)\b/i, state: "Delhi", id: "delhi" },
+  { name: "Hyderabad", regex: /\b(hyderabad|ghmc|secunderabad)\b/i, state: "Telangana", id: "hyderabad" },
+  { name: "Chennai", regex: /\b(chennai|madras)\b/i, state: "Tamil Nadu", id: "chennai" },
+  { name: "Kolkata", regex: /\b(kolkata|calcutta)\b/i, state: "West Bengal", id: "kolkata" },
+  { name: "Pune", regex: /\b(pune|poona|pmc)\b/i, state: "Maharashtra", id: "pune" },
+  { name: "Ahmedabad", regex: /\b(ahmedabad|amdavad)\b/i, state: "Gujarat", id: "ahmedabad" },
+  { name: "Jaipur", regex: /\b(jaipur)\b/i, state: "Rajasthan", id: "jaipur" },
+  { name: "Lucknow", regex: /\b(lucknow)\b/i, state: "Uttar Pradesh", id: "lucknow" },
+  { name: "Chandigarh", regex: /\b(chandigarh)\b/i, state: "Chandigarh", id: "chandigarh" },
+  { name: "Bhopal", regex: /\b(bhopal)\b/i, state: "Madhya Pradesh", id: "bhopal" },
+  { name: "Patna", regex: /\b(patna)\b/i, state: "Bihar", id: "patna" },
+  { name: "Kochi", regex: /\b(kochi|cochin)\b/i, state: "Kerala", id: "kochi" },
+  { name: "Mysuru", regex: /\b(mysuru|mysore)\b/i, state: "Karnataka", id: "mysuru" },
+  { name: "Hubballi", regex: /\b(hubballi|hubli|dharwad)\b/i, state: "Karnataka", id: "hubballi" },
+  { name: "Mangaluru", regex: /\b(mangaluru|mangalore)\b/i, state: "Karnataka", id: "mangaluru" },
+  { name: "Nagpur", regex: /\b(nagpur)\b/i, state: "Maharashtra", id: "nagpur" },
+  { name: "Indore", regex: /\b(indore)\b/i, state: "Madhya Pradesh", id: "indore" },
+  { name: "Thane", regex: /\b(thane)\b/i, state: "Maharashtra", id: "thane" },
+  { name: "Visakhapatnam", regex: /\b(visakhapatnam|vizag)\b/i, state: "Andhra Pradesh", id: "visakhapatnam" },
+  { name: "Surat", regex: /\b(surat)\b/i, state: "Gujarat", id: "surat" },
+  { name: "Kanpur", regex: /\b(kanpur)\b/i, state: "Uttar Pradesh", id: "kanpur" },
+  { name: "Varanasi", regex: /\b(varanasi|banaras|kashi)\b/i, state: "Uttar Pradesh", id: "varanasi" },
+  { name: "Coimbatore", regex: /\b(coimbatore)\b/i, state: "Tamil Nadu", id: "coimbatore" },
+  { name: "Noida", regex: /\b(noida)\b/i, state: "Uttar Pradesh", id: "noida" },
+  { name: "Gurugram", regex: /\b(gurugram|gurgaon)\b/i, state: "Haryana", id: "gurugram" }
+];
+
+/**
+ * Dynamically extracts city, district, state, and geographic jurisdiction from any document
+ */
+export function extractLocationDetails(doc, fullText = '') {
+  const d = typeof doc === 'object' && doc !== null ? doc : {};
+  let city = d.city || d.town || d.municipality || d.district || null;
+  let state = d.state || d.province || d.region || null;
+  const rawLocation = d.domicile || d.address || d.jurisdiction || d.location || '';
+  const searchCorpus = `${rawLocation} ${fullText} ${typeof doc === 'string' ? doc : JSON.stringify(doc)}`;
+
+  // 1. Try matching against known cities table
+  for (const kc of KNOWN_CITIES) {
+    if (kc.regex.test(searchCorpus)) {
+      if (!city) city = kc.name;
+      if (!state) state = kc.state;
+      break;
+    }
+  }
+
+  // 2. Try matching against Indian states table
+  if (!state) {
+    for (const st of INDIAN_STATES) {
+      const reg = new RegExp(`\\b${st.replace(/\s+/g, '\\s+')}\\b`, 'i');
+      if (reg.test(searchCorpus)) {
+        state = st;
+        break;
+      }
+    }
+  }
+
+  // 3. If explicit rawLocation has comma-separated parts like "Bandra, Mumbai, Maharashtra"
+  if (typeof rawLocation === 'string' && rawLocation.trim()) {
+    const parts = rawLocation.split(/[,/|-]+/).map(p => p.trim()).filter(Boolean);
+    if (!city && parts.length >= 1) {
+      // Pick first part if not already matching state
+      if (!INDIAN_STATES.some(s => s.toLowerCase() === parts[0].toLowerCase())) {
+        city = parts[0];
+      }
+    }
+    if (!state && parts.length >= 2) {
+      state = parts[parts.length - 1];
+    }
+  }
+
+  const cleanId = (str) => (str || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+
+  return {
+    city: city ? city.trim() : null,
+    cityId: city ? cleanId(city) : null,
+    state: state ? state.trim() : null,
+    stateId: state ? cleanId(state) : null,
+    rawLocation: rawLocation || (city && state ? `${city}, ${state}` : (city || state || "Bengaluru Urban, Karnataka"))
+  };
+}
+
 /**
  * Analyzes a cryptographically verified government document using AI eligibility rules.
  * Generates ONLY the categories and zero-knowledge options the person is legally eligible for.
@@ -290,9 +384,40 @@ export function analyzeDocumentAndGenerateCredential({ document, verificationMet
     aiDecisions.push(`Age check: Holder is ${age} years old (< 18). Suppressed 'Age ≥ 18'.`);
   }
 
-  // Domicile check
-  const domicileStr = effectiveDoc.domicile || effectiveDoc.address || effectiveDoc.jurisdiction || "Bengaluru Urban, Karnataka";
-  if (/bengaluru|bangalore|bbmp/i.test(domicileStr)) {
+  // 5. EVALUATE LOCATION & DOMICILE CRITERIA (ANY CITY & STATE)
+  const loc = extractLocationDetails(effectiveDoc, fullText);
+  const domicileStr = loc.rawLocation;
+
+  // Dynamically generate city resident predicate if city is present
+  if (loc.city) {
+    const cityId = loc.cityId === 'bengaluru' || loc.cityId === 'bangalore' ? 'blr' : loc.cityId;
+    allowedPredicates.push({
+      id: `${cityId}_resident`,
+      label: `${loc.city} Resident`,
+      statement: `Holder resides within ${loc.city} municipal jurisdiction`,
+      value: true,
+      derivedFrom: domicileStr
+    });
+    aiDecisions.push(`Location check: Verified municipal residence in ${loc.city}. Generated '${loc.city} Resident' category.`);
+  }
+
+  // Dynamically generate state domicile predicate if state is present
+  if (loc.state) {
+    // Avoid redundant duplicate if city and state are identical (e.g. Delhi)
+    if (!loc.city || loc.city.toLowerCase() !== loc.state.toLowerCase()) {
+      allowedPredicates.push({
+        id: `${loc.stateId}_domicile`,
+        label: `${loc.state} Domicile`,
+        statement: `Verified resident of ${loc.state} state`,
+        value: true,
+        derivedFrom: `State of ${loc.state}`
+      });
+      aiDecisions.push(`Jurisdiction check: Verified state domicile in ${loc.state}. Generated '${loc.state} Domicile' category.`);
+    }
+  }
+
+  // Fallback only if no location at all was detected
+  if (!loc.city && !loc.state) {
     allowedPredicates.push({
       id: "blr_resident",
       label: "Bengaluru Resident",
@@ -300,14 +425,14 @@ export function analyzeDocumentAndGenerateCredential({ document, verificationMet
       value: true,
       derivedFrom: domicileStr
     });
+    allowedPredicates.push({
+      id: "karnataka_domicile",
+      label: "Karnataka Domicile",
+      statement: "Verified resident of Karnataka state",
+      value: true,
+      derivedFrom: "State of Karnataka"
+    });
   }
-  allowedPredicates.push({
-    id: "karnataka_domicile",
-    label: "Karnataka Domicile",
-    statement: "Verified resident of Karnataka state",
-    value: true,
-    derivedFrom: "State of Karnataka"
-  });
 
   // Unique card ID based on timestamp and doc number
   const uniqueId = `cred-verified-${Date.now().toString(36)}`;

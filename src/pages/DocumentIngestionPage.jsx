@@ -409,7 +409,7 @@ export default function DocumentIngestionPage() {
                 <p className="text-xs text-slate-400">Click any document to test cryptographic verification & AI rules:</p>
               </div>
               <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">
-                5 Test Cases
+                {SAMPLE_GOV_DOCUMENTS.length} Test Cases
               </span>
             </div>
 

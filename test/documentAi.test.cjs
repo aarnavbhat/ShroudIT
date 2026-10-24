@@ -290,5 +290,65 @@ describe("Government Document Cryptographic Verification & AI Purpose Limitation
       expect(result.valid).to.equal(false);
       expect(result.reason).to.include("Public Key Accreditation Mismatch");
     });
+
+    it("should dynamically generate location categories for cities other than Bengaluru (e.g. Mumbai, Maharashtra)", function () {
+      const mumbaiDoc = {
+        documentType: "Domicile & Income Certificate",
+        annualIncome: 250000,
+        domicile: "Andheri West, Mumbai, Maharashtra",
+        issuedTo: "Rohan M. Kulkarni"
+      };
+
+      const credential = docAi.analyzeDocumentAndGenerateCredential({
+        document: mumbaiDoc,
+        verificationMeta: { valid: true }
+      });
+
+      const predicateIds = credential.predicates.map(p => p.id);
+      expect(predicateIds).to.include("mumbai_resident");
+      expect(predicateIds).to.include("maharashtra_domicile");
+      expect(predicateIds).to.not.include("blr_resident");
+      expect(predicateIds).to.not.include("karnataka_domicile");
+
+      const mumbaiPred = credential.predicates.find(p => p.id === "mumbai_resident");
+      expect(mumbaiPred.label).to.equal("Mumbai Resident");
+      expect(mumbaiPred.statement).to.include("Mumbai");
+    });
+
+    it("should dynamically generate location categories for Hyderabad and Telangana when explicit city/state fields are provided", function () {
+      const hydDoc = {
+        documentType: "Civic Attestation",
+        city: "Hyderabad",
+        state: "Telangana",
+        issuedTo: "Ananya Rao",
+        annualIncome: 180000
+      };
+
+      const credential = docAi.analyzeDocumentAndGenerateCredential({
+        document: hydDoc,
+        verificationMeta: { valid: true }
+      });
+
+      const predicateIds = credential.predicates.map(p => p.id);
+      expect(predicateIds).to.include("hyderabad_resident");
+      expect(predicateIds).to.include("telangana_domicile");
+      expect(predicateIds).to.not.include("blr_resident");
+      expect(predicateIds).to.not.include("karnataka_domicile");
+    });
+
+    it("should dynamically extract location from plain text mentions (e.g. Jaipur, Rajasthan)", function () {
+      const jaipurDoc = {
+        text: "Income and Residence Certificate: Citizen Priya Sharma residing in Malviya Nagar, Jaipur, Rajasthan. Gross annual income: ₹2,10,000."
+      };
+
+      const credential = docAi.analyzeDocumentAndGenerateCredential({
+        document: jaipurDoc,
+        verificationMeta: { valid: true }
+      });
+
+      const predicateIds = credential.predicates.map(p => p.id);
+      expect(predicateIds).to.include("jaipur_resident");
+      expect(predicateIds).to.include("rajasthan_domicile");
+    });
   });
 });
