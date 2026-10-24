@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import { 
   Shield, 
   Smartphone, 
@@ -181,14 +181,12 @@ export default function WalletPage() {
   const getQrPayloadString = (proof, mode = qrMode) => {
     if (!proof) return '';
     const cleanStatements = (proof.revealedStatements || []).map(p => {
-      if (typeof p === 'string') return { id: p, label: p, statement: p, value: true };
       const rawLabel = String(p.label || p.statement || p.predicateId || p.id || '');
-      const cleanLabel = rawLabel.replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/₹/g, 'Rs ');
-      const cleanStatement = String(p.statement || cleanLabel).replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/₹/g, 'Rs ');
+      const clean = rawLabel.replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/₹/g, 'Rs ');
       return {
         id: p.predicateId || p.id,
-        label: cleanLabel,
-        statement: cleanStatement,
+        label: clean,
+        statement: clean,
         value: p.value !== false
       };
     });
@@ -370,9 +368,32 @@ export default function WalletPage() {
   };
 
   const handleDownloadQrPng = () => {
+    const qrCanvas = document.querySelector("#resident-qr-canvas");
+    if (qrCanvas) {
+      const exportCanvas = document.createElement("canvas");
+      exportCanvas.width = 600;
+      exportCanvas.height = 600;
+      const ctx = exportCanvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, 600, 600);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(qrCanvas, 30, 30, 540, 540);
+      const pngUrl = exportCanvas.toDataURL("image/png");
+      const downloadLink = document.createElement("a");
+      downloadLink.href = pngUrl;
+      downloadLink.download = "shroudit-bbs-proof-qr.png";
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      return;
+    }
+
     const svg = document.querySelector("#resident-qr-code svg") || document.querySelector("svg.qr-presentation-svg") || document.querySelector(".qr-presentation-svg");
     if (!svg) return;
-    const svgData = new XMLSerializer().serializeToString(svg);
+    let svgData = new XMLSerializer().serializeToString(svg);
+    if (!svgData.includes("xmlns=")) {
+      svgData = svgData.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"');
+    }
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
     const img = new Image();
@@ -382,11 +403,11 @@ export default function WalletPage() {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, 600, 600);
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, 0, 0, 600, 600);
+      ctx.drawImage(img, 30, 30, 540, 540);
       const pngUrl = canvas.toDataURL("image/png");
       const downloadLink = document.createElement("a");
       downloadLink.href = pngUrl;
-      downloadLink.download = `shroudit-bbs-proof-qr.png`;
+      downloadLink.download = "shroudit-bbs-proof-qr.png";
       document.body.appendChild(downloadLink);
       downloadLink.click();
       document.body.removeChild(downloadLink);
@@ -1245,6 +1266,14 @@ export default function WalletPage() {
                           level="L"
                           includeMargin={true}
                           className="qr-presentation-svg mx-auto"
+                        />
+                        <QRCodeCanvas
+                          id="resident-qr-canvas"
+                          value={getQrPayloadString(activeProof, qrMode)}
+                          size={400}
+                          level="L"
+                          includeMargin={true}
+                          style={{ display: 'none' }}
                         />
                       </div>
 

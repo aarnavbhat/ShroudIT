@@ -2,6 +2,48 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import jsQR from 'jsqr';
 import { 
+  BrowserQRCodeReader, 
+  QRCodeReader, 
+  RGBLuminanceSource, 
+  HybridBinarizer, 
+  BinaryBitmap, 
+  DecodeHintType 
+} from '@zxing/library';
+
+/**
+ * Robust dual-engine QR decoder (ZXing HybridBinarizer + jsQR) operating on canvas ImageData
+ */
+function decodeFromCanvasWithZxingAndJsQr(canvas) {
+  if (!canvas || canvas.width < 20 || canvas.height < 20) return null;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const { data, width, height } = imgData;
+
+  // 1. ZXing with HybridBinarizer (adaptive windowed thresholding for uneven lighting & screen glare)
+  try {
+    const lum = new RGBLuminanceSource(data, width, height);
+    const bin = new HybridBinarizer(lum);
+    const bmp = new BinaryBitmap(bin);
+    const qrReader = new QRCodeReader();
+    const hints = new Map();
+    hints.set(DecodeHintType.TRY_HARDER, true);
+    const res = qrReader.decode(bmp, hints);
+    if (res && res.getText()) {
+      return res.getText();
+    }
+  } catch (e) {}
+
+  // 2. jsQR with both normal and inverted module attempts
+  try {
+    const code = jsQR(data, width, height, { inversionAttempts: "attemptBoth" });
+    if (code && code.data) {
+      return code.data;
+    }
+  } catch (e) {}
+
+  return null;
+}
+import { 
   Camera, 
   X, 
   Upload, 
@@ -93,7 +135,7 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
           }
         );
 
-        // Supplementary high-speed jsQR frame inspector running directly on HTML video stream
+        // Supplementary high-speed ZXing + jsQR frame inspector running directly on HTML video stream
         const videoScanInterval = setInterval(() => {
           try {
             const videoEl = document.querySelector("#interactive-camera-view video");
@@ -108,11 +150,10 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
               canvas.height = vh;
               const ctx = canvas.getContext('2d', { willReadFrequently: true });
               ctx.drawImage(videoEl, 0, 0, vw, vh);
-              const imgData = ctx.getImageData(0, 0, vw, vh);
-              const code = jsQR(imgData.data, vw, vh, { inversionAttempts: "dontInvert" });
-              if (code && code.data) {
+              const decoded = decodeFromCanvasWithZxingAndJsQr(canvas);
+              if (decoded) {
                 clearInterval(videoScanInterval);
-                handleSuccessfulScan(code.data);
+                handleSuccessfulScan(decoded);
               }
             }
           } catch (e) {}
@@ -172,7 +213,7 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
     onClose();
   };
 
-  // Robust Multi-Stage QR Decoder for Uploaded Photos, Screenshots & JSON Exports
+  // Industrial-Grade Multi-Engine QR Decoder for Uploaded Photos, Screen Captures & JSON Exports
   const decodeQrFromImageFile = async (file) => {
     // If user uploaded a JSON or text file directly
     if (
@@ -193,25 +234,44 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
       img.src = imgUrl;
     });
 
-    // Strategy 1: jsQR at native image resolution (fastest, pixel-perfect accuracy)
+    // Strategy 1: ZXing BrowserQRCodeReader directly on HTML Image Element
+    try {
+      const zxBrowser = new BrowserQRCodeReader();
+      const zxRes = await zxBrowser.decodeFromImageElement(img);
+      if (zxRes && zxRes.getText()) {
+        URL.revokeObjectURL(imgUrl);
+        return zxRes.getText();
+      }
+    } catch (e) {}
+
+    // Strategy 2: Native browser BarcodeDetector if supported
+    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+      try {
+        const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+        const barcodes = await detector.detect(img);
+        if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+          URL.revokeObjectURL(imgUrl);
+          return barcodes[0].rawValue;
+        }
+      } catch (e) {}
+    }
+
+    // Strategy 3: Native canvas resolution with dual ZXing + jsQR engine
     try {
       const canvas = document.createElement('canvas');
       canvas.width = img.width;
       canvas.height = img.height;
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       ctx.drawImage(img, 0, 0);
-      const imgData = ctx.getImageData(0, 0, img.width, img.height);
-      const code = jsQR(imgData.data, imgData.width, imgData.height, {
-        inversionAttempts: "attemptBoth"
-      });
-      if (code && code.data) {
+      const decoded = decodeFromCanvasWithZxingAndJsQr(canvas);
+      if (decoded) {
         URL.revokeObjectURL(imgUrl);
-        return code.data;
+        return decoded;
       }
     } catch (e) {}
 
-    // Strategy 2: Multi-Scale nearest-neighbor resampling with jsQR (essential for high-res smartphone photos)
-    const testScales = [1200, 800, 600, 1600];
+    // Strategy 4: Multi-Scale resampling with high-quality bilinear filtering (essential for phone photos of monitors)
+    const testScales = [1200, 900, 600, 1600, 500];
     for (const maxDim of testScales) {
       try {
         const canvas = document.createElement('canvas');
@@ -229,27 +289,101 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        ctx.imageSmoothingEnabled = false; // Preserve crisp module edges for QR decoding!
+
+        // 4A: Bilinear smooth pass (smooths out LCD subpixel moire lines & camera grain)
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, w, h);
-        const imgData = ctx.getImageData(0, 0, w, h);
-        const code = jsQR(imgData.data, imgData.width, imgData.height, {
-          inversionAttempts: "attemptBoth"
-        });
-        if (code && code.data) {
+        let decoded = decodeFromCanvasWithZxingAndJsQr(canvas);
+        if (decoded) {
           URL.revokeObjectURL(imgUrl);
-          return code.data;
+          return decoded;
+        }
+
+        // 4B: Nearest-neighbor crisp pass (optimal for pixel-perfect screenshots)
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, 0, 0, w, h);
+        decoded = decodeFromCanvasWithZxingAndJsQr(canvas);
+        if (decoded) {
+          URL.revokeObjectURL(imgUrl);
+          return decoded;
         }
       } catch (e) {}
     }
 
-    // Strategy 3: Native browser BarcodeDetector (if supported by OS / Chrome)
-    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
-      try {
-        const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-        const barcodes = await detector.detect(img);
-        if (barcodes && barcodes.length > 0) {
+    // Strategy 5: Contrast stretch & luminance normalization (for photos with screen glare or shadows)
+    try {
+      const canvas = document.createElement('canvas');
+      let w = Math.min(img.width, 1000);
+      let h = Math.round((img.height * w) / img.width);
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, w, h);
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const d = imgData.data;
+
+      let min = 255, max = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        const gray = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000;
+        if (gray < min) min = gray;
+        if (gray > max) max = gray;
+      }
+      const range = max - min;
+      if (range > 20) {
+        for (let i = 0; i < d.length; i += 4) {
+          const gray = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000;
+          const v = Math.min(255, Math.max(0, ((gray - min) / range) * 255));
+          d[i] = v;
+          d[i + 1] = v;
+          d[i + 2] = v;
+        }
+        ctx.putImageData(imgData, 0, 0);
+        const decoded = decodeFromCanvasWithZxingAndJsQr(canvas);
+        if (decoded) {
           URL.revokeObjectURL(imgUrl);
-          return barcodes[0].rawValue;
+          return decoded;
+        }
+      }
+    } catch (e) {}
+
+    // Strategy 6: Center-crop pass (if photo captured entire monitor or desk)
+    try {
+      const canvas = document.createElement('canvas');
+      const cropW = Math.round(img.width * 0.72);
+      const cropH = Math.round(img.height * 0.72);
+      const startX = Math.round(img.width * 0.14);
+      const startY = Math.round(img.height * 0.14);
+      canvas.width = cropW;
+      canvas.height = cropH;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, startX, startY, cropW, cropH, 0, 0, cropW, cropH);
+      const decoded = decodeFromCanvasWithZxingAndJsQr(canvas);
+      if (decoded) {
+        URL.revokeObjectURL(imgUrl);
+        return decoded;
+      }
+    } catch (e) {}
+
+    // Strategy 7: Rotations (90, 180, 270 degrees in case of mobile portrait/landscape orientation tag)
+    for (const angle of [90, 180, 270]) {
+      try {
+        const canvas = document.createElement('canvas');
+        if (angle === 90 || angle === 270) {
+          canvas.width = img.height;
+          canvas.height = img.width;
+        } else {
+          canvas.width = img.width;
+          canvas.height = img.height;
+        }
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate((angle * Math.PI) / 180);
+        ctx.drawImage(img, -img.width / 2, -img.height / 2);
+        const decoded = decodeFromCanvasWithZxingAndJsQr(canvas);
+        if (decoded) {
+          URL.revokeObjectURL(imgUrl);
+          return decoded;
         }
       } catch (e) {}
     }
