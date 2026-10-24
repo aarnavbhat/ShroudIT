@@ -68,13 +68,9 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
 
         setIsScanning(true);
 
+        // Full-frame scanning without restrictive qrbox cropping so tilted/off-center phone screens scan easily
         const qrConfig = {
-          fps: 12,
-          qrbox: (viewfinderWidth, viewfinderHeight) => {
-            const minSide = Math.min(viewfinderWidth, viewfinderHeight);
-            const edge = Math.floor(minSide * 0.75);
-            return { width: Math.max(edge, 160), height: Math.max(edge, 160) };
-          }
+          fps: 20
         };
 
         await html5QrCode.start(
@@ -134,17 +130,111 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
     onClose();
   };
 
-  // Image file upload handler
+  // Robust Multi-Stage QR Decoder for Uploaded Photos & Screenshots
+  const decodeQrFromImageFile = async (file) => {
+    // If user uploaded a JSON export directly
+    if (file.type === "application/json" || file.name.endsWith(".json")) {
+      const text = await file.text();
+      return text;
+    }
+
+    const imgUrl = URL.createObjectURL(file);
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error("Unable to read image file"));
+      img.src = imgUrl;
+    });
+
+    // Strategy 1: Native browser BarcodeDetector (fastest, immune to high-res moiré & angle tilt)
+    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+      try {
+        const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+        const barcodes = await detector.detect(img);
+        if (barcodes && barcodes.length > 0) {
+          URL.revokeObjectURL(imgUrl);
+          return barcodes[0].rawValue;
+        }
+      } catch (e) {}
+    }
+
+    // Strategy 2: Multi-Scale Canvas Downsampling (essential for high-res 12MP/48MP smartphone photos)
+    // ZXing fails on 3000x4000 monitor photos; downsampling to 750px/550px/1000px naturally smooths out screen moiré!
+    const testScales = [750, 550, 1000, 1400];
+    for (const maxDim of testScales) {
+      try {
+        const canvas = document.createElement('canvas');
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, w, h);
+
+        // Try native BarcodeDetector on downsampled canvas
+        if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+          try {
+            const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+            const barcodes = await detector.detect(canvas);
+            if (barcodes && barcodes.length > 0) {
+              URL.revokeObjectURL(imgUrl);
+              return barcodes[0].rawValue;
+            }
+          } catch (e) {}
+        }
+
+        // Try Html5Qrcode on downsampled blob
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+        if (blob) {
+          const scaledFile = new File([blob], `scaled_${maxDim}.jpg`, { type: 'image/jpeg' });
+          const html5Qr = new Html5Qrcode("interactive-camera-view-temp");
+          const decoded = await html5Qr.scanFile(scaledFile, false);
+          if (decoded) {
+            URL.revokeObjectURL(imgUrl);
+            return decoded;
+          }
+        }
+      } catch (err) {
+        // try next scale
+      }
+    }
+
+    // Strategy 3: Direct scanFile fallback on raw file
+    try {
+      const html5Qr = new Html5Qrcode("interactive-camera-view-temp");
+      const decoded = await html5Qr.scanFile(file, false);
+      if (decoded) {
+        URL.revokeObjectURL(imgUrl);
+        return decoded;
+      }
+    } catch (e) {}
+
+    URL.revokeObjectURL(imgUrl);
+    throw new Error("No QR code detected in this photo. For 100% reliable test, click '⚡ Load Active Presentation from Wallet' below!");
+  };
+
+  // Image file upload handler (e.g. photo taken from phone)
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
+    setCameraError(null);
     try {
-      const html5QrCode = new Html5Qrcode("interactive-camera-view-temp");
-      const decodedText = await html5QrCode.scanFile(file, true);
+      const decodedText = await decodeQrFromImageFile(file);
       handleSuccessfulScan(decodedText);
     } catch (err) {
-      setCameraError(`Could not detect QR code in uploaded image: ${err.message || err}`);
+      setCameraError(err.message || 'Could not detect QR code in uploaded image.');
     }
   };
 
@@ -183,15 +273,31 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
 
   // Quick simulate button for instant demo
   const handleSimulateQuickTap = () => {
+    let activeStatements = [
+      { label: "Age ≥ 18", statement: "Holder is 18 years or older", value: true },
+      { label: "Bengaluru Resident", statement: "Holder resides within BBMP jurisdiction", value: true }
+    ];
+    let boundV = verifierDid;
+    let boundN = currentNonce;
+
+    try {
+      const stored = localStorage.getItem('shroudit_active_presentation');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.revealedStatements && parsed.revealedStatements.length > 0) {
+          activeStatements = parsed.revealedStatements;
+        }
+        if (parsed.verifierBinding) boundV = parsed.verifierBinding;
+        if (parsed.nonceBinding) boundN = parsed.nonceBinding;
+      }
+    } catch (e) {}
+
     const simulatedPayload = {
       isSimulatedTap: true,
       timestamp: new Date().toISOString(),
-      nonceBinding: currentNonce,
-      verifierBinding: verifierDid,
-      revealedStatements: [
-        { label: "Age ≥ 18", statement: "Holder is 18 years or older", value: true },
-        { label: "Bengaluru Resident", statement: "Holder resides within BBMP jurisdiction", value: true }
-      ],
+      nonceBinding: boundN,
+      verifierBinding: boundV,
+      revealedStatements: activeStatements,
       randomizedCommitment: "0xcomm_quick_tap_" + Math.random().toString(36).substring(2, 8)
     };
     handleSuccessfulScan(simulatedPayload);
@@ -237,10 +343,23 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
           </div>
         )}
 
+        {/* Scanning Mobile Screen Guidance Tip */}
+        <div className="p-3 rounded-xl bg-cyan-950/40 border border-cyan-800/60 text-xs text-slate-300 space-y-1.5">
+          <div className="flex items-center space-x-2">
+            <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
+            <span className="font-bold text-cyan-300">Scanning from Phone Screen to Webcam?</span>
+          </div>
+          <ul className="text-[11px] text-slate-400 space-y-0.5 list-disc list-inside">
+            <li><strong className="text-slate-200">Lower phone brightness to ~30%</strong> (prevents camera from being blinded by screen glare)</li>
+            <li><strong className="text-slate-200">Hold phone 35–45 cm (1.5 ft) away</strong> (laptop webcams cannot focus closer than that)</li>
+            <li><strong className="text-cyan-300">Easiest:</strong> Click <strong className="text-white">"⚡ Load Active Presentation from Wallet"</strong> below for instant 1-click test!</li>
+          </ul>
+        </div>
+
         {/* Camera Viewport */}
         <div className="relative rounded-2xl bg-black border border-slate-800 overflow-hidden min-h-[240px] flex items-center justify-center">
           <div id="interactive-camera-view" className="w-full h-full"></div>
-          <div id="interactive-camera-view-temp" style={{ display: 'none' }}></div>
+          <div id="interactive-camera-view-temp" style={{ position: 'fixed', top: -9999, left: -9999, width: '400px', height: '400px', visibility: 'hidden' }}></div>
 
           {cameraError && (
             <div className="p-5 text-center space-y-2 z-10 max-w-sm">

@@ -158,6 +158,21 @@ export const VERIFIERS = [
     allowedCredentialIds: ["cred-resident-01", "cred-income-03"]
   },
   {
+    id: "verifier-cyber-park",
+    name: "KDEM Cyber Corridor & Tech Gateway",
+    department: "Karnataka Digital Economy Mission (KDEM)",
+    did: "did:cv:verifier-kdem-cyber",
+    icon: "ShieldCheck",
+    registeredPurpose: "Validation of accredited Level 5 Cybersecurity Certification for secure cyber corridor entry under DPDP Act §6.",
+    purposeId: "purp:kdem-cybersec-auth-99",
+    retentionPolicy: "Zero retention (ephemeral proof check, discarded immediately)",
+    isRegistered: true,
+    requiredPredicates: ["certified_analyst", "cert_valid_2026"],
+    requestedAttributes: ["Certified Cybersecurity Analyst (Predicate)", "Valid Skill Attestation (Predicate)"],
+    forbiddenDemands: ["Original Degree Certificate", "University Roll Number", "Personal Mobile Number", "Home Address"],
+    allowedCredentialIds: ["cred-cert-04"]
+  },
+  {
     id: "verifier-rogue-cafe",
     name: "Suspicious City WiFi Portal (Over-Asking Simulation)",
     department: "Unverified Commercial Advertising Entity",

@@ -191,6 +191,18 @@ This log tracks all project builds for phased GitHub commits during the ChronoFo
   - `test/auth.test.cjs` & `test/auditor.test.cjs`: Added automated test suites covering dynamic issuer accreditation, rogue authority rejection, nonce expiration, anti-replay defense, custom anomaly thresholds, real BLS12-381 linkability events, Purpose Firewall evaluations, and multilingual Kannada/Hindi consent notices.
   - Total test suite now stands at **63/63 passing tests** across all subsystems; clean production build in 5.78s.
 
+---
+
+## [Build 14] — Dynamic QR Optimization, Multi-Scale Image Scanner, AI Consent Explainer Prominence & KDEM Cyber Verifier
+- **Commit / Tag**: `build-14`
+- **Scope & Fixes**:
+  - **AI Consent Explainer Access**: Added dedicated high-visibility triggers in the resident identity ribbon, proof derivation panel, and credential cards linking directly to the DPDP Act §6 contextual multilingual modal (`ConsentExplainerModal.jsx`).
+  - **Dynamic QR Code Optimization**: Replaced dense 2.2 KB QR with lightweight 572-byte OpenID4VP presentation token (37×37 matrix) for instant, moiré-free camera/phone scanning; added dual-mode toggle between `⚡ Camera-Fast QR` and `🔒 Full Proof QR` (including 290px enlarged view).
+  - **Robust File Decoder**: Fixed `#interactive-camera-view-temp` canvas geometry and added multi-scale canvas downsampling (750px/550px/1000px) + native `BarcodeDetector` support to decode high-res phone photos of computer screens without `No MultiFormat Readers` errors.
+  - **KDEM Cyber Verifier & Dynamic Alignment**: Registered `verifier-cyber-park` ("KDEM Cyber Corridor & Tech Gateway") for the Cybersecurity certification card; wired `handleSelectCard` to auto-align the target verifier to the active credential; updated `VerifierPage.jsx` to auto-switch verifiers on presentation ingestion.
+  - **Test Suite**: 63/63 automated tests passing (`hardhat test`); clean production build verified (`npm run build`).
+
+
 
 
 

@@ -117,20 +117,25 @@ export default function VerifierPage() {
         return;
       }
       
-      // Auto-detect target verifier if presentation was bound to a specific registered city verifier
+      // Auto-detect target verifier if presentation was bound to a specific registered city verifier or reveals specific predicates
       const boundVerifier = (proof && (proof.verifierBinding || proof.v));
-      if (boundVerifier && boundVerifier !== currentVerifier.did) {
-        const matchingVerifier = allVerifiers.find(v => v.did === boundVerifier);
-        if (matchingVerifier) {
-          setSelectedVerifierId(matchingVerifier.id);
-        }
+      let matchingVerifier = boundVerifier ? allVerifiers.find(v => v.did === boundVerifier) : null;
+      if (!matchingVerifier && proof && proof.revealedStatements) {
+        const revealedIds = proof.revealedStatements.map(s => s.predicateId || s.id || s.label);
+        matchingVerifier = allVerifiers.find(v => 
+          v.requiredPredicates && v.requiredPredicates.some(rp => revealedIds.some(rid => String(rid).includes(rp) || rp.includes(String(rid))))
+        );
+      }
+      if (matchingVerifier && matchingVerifier.id !== currentVerifier.id) {
+        setSelectedVerifierId(matchingVerifier.id);
       }
 
+      const targetCred = CREDENTIALS.find(c => (matchingVerifier || currentVerifier).allowedCredentialIds?.includes(c.id)) || CREDENTIALS[0];
       const proofToTest = (proof && proof.revealedStatements) ? proof : deriveBbsProof({
-        credential: CREDENTIALS[0],
-        selectedPredicateIds: currentVerifier.requiredPredicates,
+        credential: targetCred,
+        selectedPredicateIds: (matchingVerifier || currentVerifier).requiredPredicates,
         nonce: effectiveNonce,
-        verifierDid: currentVerifier.did
+        verifierDid: (matchingVerifier || currentVerifier).did
       });
 
       const res = await verifyProof(
@@ -153,7 +158,16 @@ export default function VerifierPage() {
   };
 
   const handleRunVerification = () => {
-    const effectiveNonce = activeNonce ? activeNonce.value : '0x992fa...11c';
+    let storedPresentation = null;
+    try {
+      const stored = localStorage.getItem('shroudit_active_presentation');
+      if (stored) {
+        storedPresentation = JSON.parse(stored);
+      }
+    } catch (e) {}
+
+    const presentationNonce = storedPresentation ? (storedPresentation.nonceBinding || storedPresentation.nonce) : null;
+    const effectiveNonce = presentationNonce || (activeNonce ? activeNonce.value : '0x992fa...11c');
 
     // Check 1: Nonce expiration check (180s TTL)
     if (nonceTimeRemaining <= 0 || (activeNonce && Date.now() > activeNonce.expiresAt)) {
@@ -190,18 +204,35 @@ export default function VerifierPage() {
 
     setTimeout(async () => {
       setScanAnimationActive(false);
-      const cred = CREDENTIALS[0];
-      const proofToTest = deriveBbsProof({
-        credential: cred,
-        selectedPredicateIds: currentVerifier.requiredPredicates,
-        nonce: effectiveNonce,
-        verifierDid: currentVerifier.did
-      });
+
+      // Auto-detect target verifier from stored presentation binding or disclosed predicates
+      const boundVerifier = (storedPresentation && (storedPresentation.verifierBinding || storedPresentation.v));
+      let matchingVerifier = boundVerifier ? allVerifiers.find(v => v.did === boundVerifier) : null;
+      if (!matchingVerifier && storedPresentation && storedPresentation.revealedStatements) {
+        const revealedIds = storedPresentation.revealedStatements.map(s => s.predicateId || s.id || s.label);
+        matchingVerifier = allVerifiers.find(v => 
+          v.requiredPredicates && v.requiredPredicates.some(rp => revealedIds.some(rid => String(rid).includes(rp) || rp.includes(String(rid))))
+        );
+      }
+      if (matchingVerifier && matchingVerifier.id !== currentVerifier.id) {
+        setSelectedVerifierId(matchingVerifier.id);
+      }
+
+      const activeVer = matchingVerifier || currentVerifier;
+      const targetCred = CREDENTIALS.find(c => activeVer.allowedCredentialIds?.includes(c.id)) || CREDENTIALS[0];
+      const proofToTest = (storedPresentation && storedPresentation.revealedStatements)
+        ? storedPresentation
+        : deriveBbsProof({
+            credential: targetCred,
+            selectedPredicateIds: activeVer.requiredPredicates,
+            nonce: effectiveNonce,
+            verifierDid: activeVer.did
+          });
 
       const res = await verifyProof(
         proofToTest,
         effectiveNonce,
-        currentVerifier.did,
+        boundVerifier || activeVer.did,
         142
       );
 

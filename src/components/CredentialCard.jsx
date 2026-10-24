@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Train, BadgePercent, Award, CheckCircle2, ChevronRight, EyeOff, Lock, Check } from 'lucide-react';
+import { Shield, Train, BadgePercent, Award, CheckCircle2, ChevronRight, EyeOff, Lock, Check, Sparkles } from 'lucide-react';
 
 export default function CredentialCard({ 
   credential, 
@@ -160,10 +160,12 @@ export default function CredentialCard({
               e.stopPropagation();
               onOpenExplainer(credential);
             }}
-            className="text-[11px] text-cyan-400 hover:text-cyan-300 hover:underline flex items-center space-x-1"
+            className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center space-x-1.5 font-medium px-2.5 py-1 rounded-lg bg-cyan-950/50 border border-cyan-800/80 hover:bg-cyan-900/60 transition-colors shadow-sm"
+            title="Open Multilingual AI Consent Explainer"
           >
-            <span>Explain Privacy Guarantee</span>
-            <ChevronRight className="w-3 h-3" />
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+            <span>AI Consent Explainer</span>
+            <ChevronRight className="w-3 h-3 text-cyan-400/70" />
           </button>
 
           <button

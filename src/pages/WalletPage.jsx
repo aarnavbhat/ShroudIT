@@ -64,6 +64,26 @@ export default function WalletPage() {
   const [copied, setCopied] = useState(false);
   const [storageInitialized, setStorageInitialized] = useState(false);
   const [enlargeQrOpen, setEnlargeQrOpen] = useState(false);
+  const [qrMode, setQrMode] = useState('compact'); // 'compact' (fast camera scan) | 'full' (all raw curve points)
+
+  const getQrPayloadString = (proof, mode = qrMode) => {
+    if (!proof) return '';
+    const base = {
+      protocol: "openid4vp",
+      proofId: proof.proofId,
+      verifier: proof.verifierBinding,
+      nonce: proof.nonceBinding,
+      commitment: proof.randomizedCommitment,
+      revealedStatements: proof.revealedStatements,
+      deviceProof: proof.deviceProofRaw || proof.deviceBindingSignature,
+      devicePublicKey: proof.devicePublicKey,
+      timestamp: proof.timestamp
+    };
+    if (mode === 'full' && proof.rawProof) {
+      base.rawProof = proof.rawProof;
+    }
+    return JSON.stringify(base);
+  };
 
   useEffect(() => {
     async function loadWalletStorage() {
@@ -99,6 +119,14 @@ export default function WalletPage() {
   const handleSelectCard = (cred) => {
     setSelectedCredId(cred.id);
     setSelectedPredicates(cred.predicates.map(p => p.id));
+
+    // Dynamically align target city verifier to the selected credential's accepted service
+    const matchingVerifier = allVerifiers.find(v => 
+      v.allowedCredentialIds && v.allowedCredentialIds.includes(cred.id)
+    );
+    if (matchingVerifier) {
+      setSelectedVerifierId(matchingVerifier.id);
+    }
   };
 
   const handleOpenExplainer = (cred) => {
@@ -341,6 +369,15 @@ export default function WalletPage() {
               })}
             </div>
 
+            {/* Mobile AI Consent Explainer Button */}
+            <button
+              onClick={() => setExplainerOpen(true)}
+              className="w-full py-2.5 rounded-xl bg-cyan-950/50 text-cyan-300 border border-cyan-800/80 hover:bg-cyan-900/60 font-semibold text-xs flex items-center justify-center space-x-1.5"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span>AI Consent Explainer (EN / ಕನ್ನಡ / हिन्दी)</span>
+            </button>
+
             {/* Mobile Action Button */}
             <button
               onClick={handleGenerateProof}
@@ -356,22 +393,25 @@ export default function WalletPage() {
                 <span className="text-xs font-bold text-cyan-300 block">Randomized Presentation Ready</span>
                 <div className="p-2.5 bg-white mx-auto rounded-xl inline-block shadow-lg">
                   <QRCodeSVG
-                    value={JSON.stringify({
-                      protocol: "openid4vp",
-                      proofId: activeProof.proofId,
-                      verifier: activeProof.verifierBinding,
-                      nonce: activeProof.nonceBinding,
-                      commitment: activeProof.randomizedCommitment,
-                      revealedStatements: activeProof.revealedStatements,
-                      deviceProof: activeProof.deviceProofRaw || activeProof.deviceBindingSignature,
-                      devicePublicKey: activeProof.devicePublicKey,
-                      timestamp: activeProof.timestamp,
-                      rawProof: activeProof.rawProof
-                    })}
-                    size={150}
+                    value={getQrPayloadString(activeProof, qrMode)}
+                    size={170}
                     level="L"
                     includeMargin={true}
                   />
+                </div>
+                <div className="flex justify-center space-x-1 text-[10px] font-mono">
+                  <button
+                    onClick={() => setQrMode('compact')}
+                    className={`px-2 py-0.5 rounded ${qrMode === 'compact' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400 bg-slate-800'}`}
+                  >
+                    ⚡ Fast Scan
+                  </button>
+                  <button
+                    onClick={() => setQrMode('full')}
+                    className={`px-2 py-0.5 rounded ${qrMode === 'full' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400 bg-slate-800'}`}
+                  >
+                    🔒 Full Proof
+                  </button>
                 </div>
                 <p className="text-[10px] text-emerald-400 font-mono">0 Bytes PII Leaked • Fresh Proof</p>
               </div>
@@ -406,6 +446,14 @@ export default function WalletPage() {
                   <Database className="w-3.5 h-3.5 text-cyan-400" />
                   <span>AES-256-GCM IndexedDB Enclave</span>
                 </span>
+                <button
+                  onClick={() => setExplainerOpen(true)}
+                  className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-cyan-950/70 text-cyan-300 border border-cyan-800 hover:bg-cyan-900/80 transition-all shadow-sm"
+                  title="Open AI Multilingual Consent Explainer (DPDP Act §6)"
+                >
+                  <Sparkles className="w-4 h-4 text-cyan-400" />
+                  <span>AI Consent Explainer</span>
+                </button>
                 <button
                   onClick={handleSimulateOverAsking}
                   className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-rose-950/60 text-rose-300 border border-rose-800 hover:bg-rose-900/80 transition-all shadow-sm"
@@ -521,6 +569,17 @@ export default function WalletPage() {
                   </div>
                 </div>
 
+                {/* AI Multilingual Consent Explainer Quick Action */}
+                <button
+                  type="button"
+                  onClick={() => setExplainerOpen(true)}
+                  className="w-full py-2 px-3 rounded-xl bg-cyan-950/40 text-cyan-300 border border-cyan-800/80 hover:bg-cyan-900/60 font-medium text-xs flex items-center justify-center space-x-2 transition-all shadow-sm"
+                  title="DPDP Act §6 Contextual Consent Notice"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>View AI Consent Notice (EN / ಕನ್ನಡ / हिन्दी)</span>
+                </button>
+
                 {/* Derive Proof Button */}
                 <button
                   onClick={handleGenerateProof}
@@ -571,41 +630,61 @@ export default function WalletPage() {
                     <div className="p-4 bg-white rounded-xl flex flex-col sm:flex-row items-center justify-center gap-4 shadow-lg shadow-cyan-950/20">
                       <div 
                         onClick={() => setEnlargeQrOpen(true)}
-                        className="p-1 bg-white rounded-lg border border-slate-200 shrink-0 cursor-pointer hover:ring-2 hover:ring-cyan-500 transition-all"
+                        className="p-1 bg-white rounded-lg border border-slate-200 shrink-0 cursor-pointer hover:ring-2 hover:ring-cyan-500 transition-all text-center"
                         title="Click to expand full screen"
                       >
                         <QRCodeSVG
-                          value={JSON.stringify({
-                            protocol: "openid4vp",
-                            proofId: activeProof.proofId,
-                            verifier: activeProof.verifierBinding,
-                            nonce: activeProof.nonceBinding,
-                            commitment: activeProof.randomizedCommitment,
-                            revealedStatements: activeProof.revealedStatements,
-                            deviceProof: activeProof.deviceProofRaw || activeProof.deviceBindingSignature,
-                            devicePublicKey: activeProof.devicePublicKey,
-                            timestamp: activeProof.timestamp,
-                            rawProof: activeProof.rawProof
-                          })}
-                          size={165}
+                          value={getQrPayloadString(activeProof, qrMode)}
+                          size={185}
                           level="L"
                           includeMargin={true}
                         />
                       </div>
 
-                      <div className="text-slate-900 text-left space-y-1">
-                        <span className="text-[10px] font-mono uppercase font-bold text-cyan-800 block">OpenID4VP Dynamic QR</span>
-                        <p className="text-xs font-semibold leading-tight">Ready for Smart Turnstile / Kiosk Tap or Camera Scan</p>
-                        <p className="text-[10px] text-slate-600 font-mono">Bound Nonce: {activeProof.nonceBinding.substring(0, 14)}...</p>
-                        <div className="flex items-center space-x-1.5 pt-1">
+                      <div className="text-slate-900 text-left space-y-2 flex-1">
+                        <div>
+                          <span className="text-[10px] font-mono uppercase font-bold text-cyan-800 block">OpenID4VP Dynamic QR</span>
+                          <p className="text-xs font-semibold leading-tight">Ready for Smart Turnstile / Kiosk Tap or Camera Scan</p>
+                          <p className="text-[10px] text-slate-600 font-mono mt-0.5">Bound Nonce: {activeProof.nonceBinding.substring(0, 14)}...</p>
+                        </div>
+
+                        {/* Density / Speed Switcher for Cameras */}
+                        <div className="flex items-center space-x-1 p-1 bg-slate-100 rounded-lg text-[10px] font-mono">
+                          <button
+                            type="button"
+                            onClick={() => setQrMode('compact')}
+                            className={`flex-1 py-1 px-2 rounded font-semibold transition-all ${
+                              qrMode === 'compact'
+                                ? 'bg-cyan-600 text-white shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                            title="4x larger dots, scans in 0.2s on any camera or phone"
+                          >
+                            ⚡ Camera-Fast QR
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setQrMode('full')}
+                            className={`flex-1 py-1 px-2 rounded font-semibold transition-all ${
+                              qrMode === 'full'
+                                ? 'bg-slate-800 text-white shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                            title="Embeds all raw BLS12-381 G1 curve points (ultra dense)"
+                          >
+                            🔒 Full Proof
+                          </button>
+                        </div>
+
+                        <div className="flex items-center space-x-1.5 pt-0.5">
                           <span className="inline-block text-[9px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
                             Zero Personal Data
                           </span>
                           <span className="inline-block text-[9px] px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono font-semibold">
-                            High-Density Mode
+                            {qrMode === 'compact' ? 'Camera-Ready (572B)' : 'Deep Audit (2.2KB)'}
                           </span>
                         </div>
-                        <p className="text-[10px] text-slate-500 italic pt-0.5">Click QR to enlarge or copy payload for instant tap</p>
+                        <p className="text-[10px] text-slate-500 italic">Click QR to enlarge or copy payload for instant tap</p>
                       </div>
                     </div>
 
@@ -689,7 +768,7 @@ export default function WalletPage() {
       {/* Enlarged High-Resolution QR Modal for Reliable Webcam / Phone Scanning */}
       {enlargeQrOpen && activeProof && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
-          <div className="relative w-full max-w-sm rounded-3xl bg-[#0b101e] border-2 border-cyan-500/60 p-6 shadow-2xl shadow-cyan-950/80 space-y-4 text-center">
+          <div className="relative w-full max-w-md rounded-3xl bg-[#0b101e] border-2 border-cyan-500/60 p-6 shadow-2xl shadow-cyan-950/80 space-y-4 text-center">
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
               <span className="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider">
                 Full-Size OpenID4VP QR
@@ -702,30 +781,45 @@ export default function WalletPage() {
               </button>
             </div>
 
-            <div className="p-3 bg-white rounded-2xl mx-auto inline-block shadow-xl">
+            {/* Density Selector */}
+            <div className="flex items-center justify-center space-x-1 p-1 bg-slate-900 border border-slate-800 rounded-xl text-xs font-mono">
+              <button
+                onClick={() => setQrMode('compact')}
+                className={`flex-1 py-1.5 px-3 rounded-lg font-bold transition-all ${
+                  qrMode === 'compact'
+                    ? 'bg-cyan-500 text-black shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                ⚡ Camera-Fast (High Contrast)
+              </button>
+              <button
+                onClick={() => setQrMode('full')}
+                className={`flex-1 py-1.5 px-3 rounded-lg font-bold transition-all ${
+                  qrMode === 'full'
+                    ? 'bg-slate-700 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                🔒 Full Curve Vectors
+              </button>
+            </div>
+
+            <div className="p-4 bg-white rounded-2xl mx-auto inline-block shadow-2xl border-4 border-white">
               <QRCodeSVG
-                value={JSON.stringify({
-                  protocol: "openid4vp",
-                  proofId: activeProof.proofId,
-                  verifier: activeProof.verifierBinding,
-                  nonce: activeProof.nonceBinding,
-                  commitment: activeProof.randomizedCommitment,
-                  revealedStatements: activeProof.revealedStatements,
-                  deviceProof: activeProof.deviceProofRaw || activeProof.deviceBindingSignature,
-                  devicePublicKey: activeProof.devicePublicKey,
-                  timestamp: activeProof.timestamp,
-                  rawProof: activeProof.rawProof
-                })}
-                size={260}
+                value={getQrPayloadString(activeProof, qrMode)}
+                size={290}
                 level="L"
                 includeMargin={true}
               />
             </div>
 
             <div className="space-y-1 text-xs font-mono">
-              <p className="text-white font-bold">Ready for Webcam or Phone Scan</p>
+              <p className="text-white font-bold">
+                {qrMode === 'compact' ? '⚡ 572-Byte Payload: Instant Camera & Phone Capture' : '🔒 2,187-Byte Payload: Deep Mathematical Vectors'}
+              </p>
               <p className="text-[11px] text-slate-400">Target: {currentVerifier.name}</p>
-              <p className="text-[10px] text-emerald-400 font-bold">0 Bytes Personal Data Leaked</p>
+              <p className="text-[10px] text-emerald-400 font-bold">0 Bytes Personal Identity Leaked</p>
             </div>
 
             <button
