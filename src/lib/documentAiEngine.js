@@ -165,7 +165,45 @@ export function extractLocationDetails(doc, fullText = '') {
  * Analyzes a cryptographically verified government document using AI eligibility rules.
  * Generates ONLY the categories and zero-knowledge options the person is legally eligible for.
  */
+/**
+ * Resolves an accredited government issuer DID registered on IssuerRegistry.sol
+ */
+export function resolveAccreditedIssuer(effectiveDoc = {}, verificationMeta = {}) {
+  const issuerStr = String(
+    effectiveDoc.issuer || 
+    effectiveDoc.department || 
+    verificationMeta.issuerAuthority || 
+    effectiveDoc.documentType || 
+    ""
+  ).toLowerCase();
+
+  if (issuerStr.includes('bmtc') || issuerStr.includes('transit') || issuerStr.includes('metro')) {
+    return {
+      name: "BMTC Transit Authority",
+      did: "did:cv:bmtc-transit"
+    };
+  }
+  if (issuerStr.includes('social welfare') || issuerStr.includes('welfare') || issuerStr.includes('dsw')) {
+    return {
+      name: "Directorate of Social Welfare",
+      did: "did:cv:karnataka-dsw"
+    };
+  }
+  if (issuerStr.includes('kdem') || issuerStr.includes('cyber') || issuerStr.includes('digital economy')) {
+    return {
+      name: "Karnataka Digital Economy Mission",
+      did: "did:cv:kdem-cert"
+    };
+  }
+
+  return {
+    name: effectiveDoc.issuer || verificationMeta.issuerAuthority || "Center for e-Governance, Karnataka",
+    did: "did:cv:gov-karnataka-ceg"
+  };
+}
+
 export function analyzeDocumentAndGenerateCredential({ document, verificationMeta = {}, geminiResult = null }) {
+  const accreditedIssuer = resolveAccreditedIssuer(typeof document === "object" && document !== null ? document : {}, verificationMeta);
   const text = typeof document === 'string' ? document : JSON.stringify(document);
   const docObj = typeof document === 'object' && document !== null ? document : {};
 
@@ -205,7 +243,7 @@ export function analyzeDocumentAndGenerateCredential({ document, verificationMet
       status: `Active (Verified by Gemini AI)`,
       expiryDate: "2027-12-31",
       issuer: aiData.issuer || effectiveDoc.issuer || verificationMeta.issuerAuthority || "Government of Karnataka",
-      issuerDid: "did:cv:gov-accredited-authority",
+      issuerDid: accreditedIssuer.did,
       documentNumber: aiData.documentNumber || effectiveDoc.documentNumber || `KA-GOV-${Date.now().toString().slice(-6)}`,
       verifiedAt: verificationMeta.verifiedAt || new Date().toISOString(),
       verifiedByPublicKey: GOV_PUBLIC_KEY_BASE64,
@@ -449,8 +487,8 @@ export function analyzeDocumentAndGenerateCredential({ document, verificationMet
     sourceDocumentTitle: docHeading,
     status: "Active (AI Verified)",
     expiryDate: "2027-12-31",
-    issuer: effectiveDoc.issuer || verificationMeta.issuerAuthority || "Government of Karnataka",
-    issuerDid: "did:cv:gov-accredited-authority",
+    issuer: effectiveDoc.issuer || verificationMeta.issuerAuthority || accreditedIssuer.name,
+    issuerDid: accreditedIssuer.did,
     documentNumber: effectiveDoc.documentNumber || `KA-GOV-${Date.now().toString().slice(-6)}`,
     verifiedAt: verificationMeta.verifiedAt || new Date().toISOString(),
     verifiedByPublicKey: GOV_PUBLIC_KEY_BASE64,

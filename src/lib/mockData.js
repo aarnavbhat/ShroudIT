@@ -243,6 +243,33 @@ export const ON_CHAIN_REGISTRY = {
       credentialsIssued: "94,800",
       schemas: ["ProfessionalSkillCert_v1"],
       lastAnchoredTx: "0x66c3a1...88b2"
+    },
+    {
+      name: "Center for e-Governance, Karnataka",
+      did: "did:shroud:gov-karnataka-ceg",
+      publicKey: "0x04e8b394f...99a1",
+      status: "Accredited",
+      credentialsIssued: "1,248,500",
+      schemas: ["ResidentIdentity_v2", "AddressCredential_v1"],
+      lastAnchoredTx: "0x7a3f89...11c2"
+    },
+    {
+      name: "Government Accredited Authority (Civic Ingestion)",
+      did: "did:cv:gov-accredited-authority",
+      publicKey: "0x04e8b394f...99a1",
+      status: "Accredited",
+      credentialsIssued: "1,248,500",
+      schemas: ["ResidentIdentity_v2", "CivicAttestation_v1"],
+      lastAnchoredTx: "0x7a3f89...11c2"
+    },
+    {
+      name: "Government Accredited Authority (Civic Ingestion)",
+      did: "did:shroud:gov-accredited-authority",
+      publicKey: "0x04e8b394f...99a1",
+      status: "Accredited",
+      credentialsIssued: "1,248,500",
+      schemas: ["ResidentIdentity_v2", "CivicAttestation_v1"],
+      lastAnchoredTx: "0x7a3f89...11c2"
     }
   ],
   transparencyLogs: [

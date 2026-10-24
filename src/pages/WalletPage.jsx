@@ -180,19 +180,32 @@ export default function WalletPage() {
 
   const getQrPayloadString = (proof, mode = qrMode) => {
     if (!proof) return '';
+    const cleanStatements = (proof.revealedStatements || []).map(p => {
+      if (typeof p === 'string') return { id: p, label: p, statement: p, value: true };
+      const rawLabel = String(p.label || p.statement || p.predicateId || p.id || '');
+      const cleanLabel = rawLabel.replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/₹/g, 'Rs ');
+      const cleanStatement = String(p.statement || cleanLabel).replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/₹/g, 'Rs ');
+      return {
+        id: p.predicateId || p.id,
+        label: cleanLabel,
+        statement: cleanStatement,
+        value: p.value !== false
+      };
+    });
+
     const base = {
       protocol: "openid4vp",
       proofId: proof.proofId,
       nonceBinding: proof.nonceBinding,
       verifierBinding: proof.verifierBinding,
       randomizedCommitment: proof.randomizedCommitment,
-      revealedStatements: proof.revealedStatements,
+      revealedStatements: cleanStatements,
       deviceProofRaw: proof.deviceProofRaw || proof.deviceBindingSignature,
       devicePublicKey: proof.devicePublicKey,
       timestamp: proof.timestamp,
-      issuerDid: proof.issuerDid,
-      issuer: proof.issuer,
-      credentialSchema: proof.credentialSchema
+      issuerDid: proof.issuerDid || "did:cv:gov-karnataka-ceg",
+      issuer: proof.issuer || "Center for e-Governance, Karnataka",
+      credentialSchema: proof.credentialSchema || "Civic Attestation"
     };
     if (mode === 'full' && proof.rawProof) {
       base.rawProof = proof.rawProof;
@@ -262,9 +275,24 @@ export default function WalletPage() {
     setSelectedPredicates(cred.predicates.map(p => p.id));
 
     // Dynamically align target city verifier to the selected credential's accepted service
-    const matchingVerifier = allVerifiers.find(v => 
+    let matchingVerifier = allVerifiers.find(v => 
       v.allowedCredentialIds && v.allowedCredentialIds.includes(cred.id)
     );
+
+    // If not matched by static ID (e.g. for dynamic or newly uploaded credentials), align by capability
+    if (!matchingVerifier && cred.predicates) {
+      const predIds = cred.predicates.map(p => p.id.toLowerCase());
+      if (predIds.some(id => id.includes('income') || id.includes('welfare') || id.includes('subsidy'))) {
+        matchingVerifier = allVerifiers.find(v => v.id === 'verifier-welfare');
+      } else if (predIds.some(id => id.includes('student') || id.includes('concession') || id.includes('metro') || id.includes('transit'))) {
+        matchingVerifier = allVerifiers.find(v => v.id === 'verifier-metro');
+      } else if (predIds.some(id => id.includes('cyber') || id.includes('analyst') || id.includes('cert_valid'))) {
+        matchingVerifier = allVerifiers.find(v => v.id === 'verifier-cyber-park');
+      } else {
+        matchingVerifier = allVerifiers.find(v => v.id === 'verifier-library');
+      }
+    }
+
     if (matchingVerifier) {
       setSelectedVerifierId(matchingVerifier.id);
     }
@@ -279,7 +307,10 @@ export default function WalletPage() {
     setIsGenerating(true);
     setTimeout(() => {
       const nonceObj = generateNonce(currentVerifier.did);
-      const targetIssuer = allIssuers.find(i => i.did === currentCred.issuerDid) || allIssuers[0];
+      const targetIssuer = allIssuers.find(i => 
+        i.did === currentCred.issuerDid || 
+        (currentCred.issuerDid && i.did.includes(currentCred.issuerDid.replace(/^did:(cv|shroud):/, '')))
+      ) || allIssuers[0];
       const proof = deriveBbsProof({
         credential: currentCred,
         selectedPredicateIds: selectedPredicates,
@@ -339,7 +370,7 @@ export default function WalletPage() {
   };
 
   const handleDownloadQrPng = () => {
-    const svg = document.querySelector("#resident-qr-code svg") || document.querySelector("svg.qr-presentation-svg");
+    const svg = document.querySelector("#resident-qr-code svg") || document.querySelector("svg.qr-presentation-svg") || document.querySelector(".qr-presentation-svg");
     if (!svg) return;
     const svgData = new XMLSerializer().serializeToString(svg);
     const canvas = document.createElement("canvas");
@@ -350,6 +381,7 @@ export default function WalletPage() {
       canvas.height = 600;
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, 600, 600);
+      ctx.imageSmoothingEnabled = false;
       ctx.drawImage(img, 0, 0, 600, 600);
       const pngUrl = canvas.toDataURL("image/png");
       const downloadLink = document.createElement("a");

@@ -780,5 +780,101 @@ describe("ShroudIT Dynamic Authentication, Government On-Chain Accreditation & M
       expect(result.valid).to.equal(false);
       expect(result.issues.some(i => i.includes("Nonce mismatch"))).to.equal(true);
     });
+    it("should seamlessly verify BBS+ presentation proof generated from an uploaded government document", async function () {
+      const { analyzeDocumentAndGenerateCredential } = await import("../src/lib/documentAiEngine.js");
+      const { deriveBbsProof, verifyProof } = await import("../src/lib/cryptoSim.js");
+      const { SAMPLE_GOV_DOCUMENTS } = await import("../src/lib/sampleGovernmentDocs.js");
+
+      const sample = SAMPLE_GOV_DOCUMENTS[0].data;
+      const cred = analyzeDocumentAndGenerateCredential({ document: sample });
+      expect(cred.isAiGenerated).to.equal(true);
+      expect(cred.issuerDid).to.equal("did:cv:gov-karnataka-ceg");
+
+      const sessionNonce = "0xuploaded_doc_nonce_4491";
+      const verifierDid = "did:cv:verifier-yuva-nidhi";
+
+      const proof = deriveBbsProof({
+        credential: cred,
+        selectedPredicateIds: ["income_below_3L", "welfare_eligible"],
+        nonce: sessionNonce,
+        verifierDid
+      });
+
+      const result = await verifyProof(proof, sessionNonce, verifierDid, 142);
+      expect(result.valid).to.equal(true);
+      expect(result.issuerAccredited).to.equal(true);
+      expect(result.revealedPredicates).to.have.lengthOf(2);
+    });
+
+    it("should seamlessly verify dynamic municipal predicates (e.g. Mumbai resident, Maharashtra domicile) on-chain", async function () {
+      const { analyzeDocumentAndGenerateCredential } = await import("../src/lib/documentAiEngine.js");
+      const { deriveBbsProof, verifyProof } = await import("../src/lib/cryptoSim.js");
+      const { SAMPLE_GOV_DOCUMENTS } = await import("../src/lib/sampleGovernmentDocs.js");
+
+      const mumbaiDoc = SAMPLE_GOV_DOCUMENTS[4].data;
+      const cred = analyzeDocumentAndGenerateCredential({ document: mumbaiDoc });
+
+      const predIds = cred.predicates.map(p => p.id);
+      expect(predIds).to.include("mumbai_resident");
+      expect(predIds).to.include("maharashtra_domicile");
+
+      const sessionNonce = "0xmumbai_turnstile_nonce_8821";
+      const verifierDid = "did:cv:verifier-blr-library";
+
+      const proof = deriveBbsProof({
+        credential: cred,
+        selectedPredicateIds: ["mumbai_resident", "maharashtra_domicile"],
+        nonce: sessionNonce,
+        verifierDid
+      });
+
+      const result = await verifyProof(proof, sessionNonce, verifierDid, 142);
+      expect(result.valid).to.equal(true);
+      expect(result.revealedPredicates.some(p => p.predicateId === "mumbai_resident")).to.equal(true);
+    });
+
+    it("should verify scanned compact QR payload for dynamically ingested certificates", async function () {
+      const { analyzeDocumentAndGenerateCredential } = await import("../src/lib/documentAiEngine.js");
+      const { deriveBbsProof, verifyProof } = await import("../src/lib/cryptoSim.js");
+      const { SAMPLE_GOV_DOCUMENTS } = await import("../src/lib/sampleGovernmentDocs.js");
+
+      const studentDoc = SAMPLE_GOV_DOCUMENTS[2].data;
+      const cred = analyzeDocumentAndGenerateCredential({ document: studentDoc });
+
+      const sessionNonce = "0xqr_compact_scan_nonce_5521";
+      const verifierDid = "did:cv:verifier-bmrcl-gate";
+
+      const proof = deriveBbsProof({
+        credential: cred,
+        selectedPredicateIds: ["valid_student", "tier1_concession"],
+        nonce: sessionNonce,
+        verifierDid
+      });
+
+      // Compact QR payload simulation (cleanStatements format)
+      const qrString = JSON.stringify({
+        protocol: "openid4vp",
+        proofId: proof.proofId,
+        nonceBinding: proof.nonceBinding,
+        verifierBinding: proof.verifierBinding,
+        randomizedCommitment: proof.randomizedCommitment,
+        revealedStatements: proof.revealedStatements.map(p => ({
+          id: p.predicateId,
+          label: p.label,
+          statement: p.statement,
+          value: true
+        })),
+        deviceProofRaw: proof.deviceProofRaw,
+        devicePublicKey: proof.devicePublicKey,
+        issuerDid: cred.issuerDid,
+        issuer: cred.issuer
+      });
+
+      const parsed = JSON.parse(qrString);
+      const result = await verifyProof(parsed, sessionNonce, verifierDid, 142);
+      expect(result.valid).to.equal(true);
+      expect(result.issuerAccredited).to.equal(true);
+      expect(result.revealedPredicates).to.have.lengthOf(2);
+    });
   });
 });

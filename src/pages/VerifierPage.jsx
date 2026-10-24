@@ -117,8 +117,21 @@ export default function VerifierPage() {
       proof.nonceBinding = proof.nonceBinding || proof.nonce || proof.n;
       proof.verifierBinding = proof.verifierBinding || proof.verifier || proof.v;
       proof.randomizedCommitment = proof.randomizedCommitment || proof.commitment || proof.c;
-      proof.deviceProofRaw = proof.deviceProofRaw || proof.deviceProof || proof.deviceBindingSignature;
-      proof.issuerDid = proof.issuerDid || (proof.rawProof && proof.rawProof.issuerDid);
+      proof.deviceProofRaw = proof.deviceProofRaw || proof.deviceProof || proof.deviceBindingSignature || proof.dp;
+      proof.issuerDid = proof.issuerDid || (proof.rawProof && proof.rawProof.issuerDid) || proof.iss;
+      proof.revealedStatements = proof.revealedStatements || proof.revealed || proof.r || [];
+
+      if (Array.isArray(proof.revealedStatements)) {
+        proof.revealedStatements = proof.revealedStatements.map(p => {
+          if (typeof p === 'string') return { predicateId: p, label: p, statement: p, value: true };
+          return {
+            predicateId: p.predicateId || p.id,
+            label: p.label || p.statement || p.predicateId || p.id,
+            statement: p.statement || p.label || p.id,
+            value: p.value !== false
+          };
+        });
+      }
     }
 
     setIsVerifying(true);
@@ -163,10 +176,10 @@ export default function VerifierPage() {
       // Auto-detect target verifier if presentation was bound to a specific registered city verifier or reveals specific predicates
       const boundVerifier = proof && proof.verifierBinding;
       let matchingVerifier = boundVerifier ? allVerifiers.find(v => v.did === boundVerifier) : null;
-      if (!matchingVerifier && proof && proof.revealedStatements) {
-        const revealedIds = proof.revealedStatements.map(s => s.predicateId || s.id || s.label);
+      if (!matchingVerifier && proof && proof.revealedStatements && proof.revealedStatements.length > 0) {
+        const revealedIds = proof.revealedStatements.map(s => String(s.predicateId || s.id || s.label).toLowerCase());
         matchingVerifier = allVerifiers.find(v => 
-          v.requiredPredicates && v.requiredPredicates.some(rp => revealedIds.some(rid => String(rid).includes(rp) || rp.includes(String(rid))))
+          v.requiredPredicates && v.requiredPredicates.some(rp => revealedIds.some(rid => rid.includes(rp.toLowerCase()) || rp.toLowerCase().includes(rid)))
         );
       }
       if (matchingVerifier && matchingVerifier.id !== currentVerifier.id) {
@@ -175,7 +188,7 @@ export default function VerifierPage() {
 
       const activeVer = matchingVerifier || currentVerifier;
       const targetCred = CREDENTIALS.find(c => activeVer.allowedCredentialIds?.includes(c.id)) || CREDENTIALS[0];
-      const proofToTest = (proof && proof.revealedStatements) ? proof : deriveBbsProof({
+      const proofToTest = (proof && proof.revealedStatements && proof.revealedStatements.length > 0) ? proof : deriveBbsProof({
         credential: targetCred,
         selectedPredicateIds: activeVer.requiredPredicates,
         nonce: effectiveNonce,
@@ -218,8 +231,21 @@ export default function VerifierPage() {
       storedPresentation.nonceBinding = storedPresentation.nonceBinding || storedPresentation.nonce || storedPresentation.n;
       storedPresentation.verifierBinding = storedPresentation.verifierBinding || storedPresentation.verifier || storedPresentation.v;
       storedPresentation.randomizedCommitment = storedPresentation.randomizedCommitment || storedPresentation.commitment || storedPresentation.c;
-      storedPresentation.deviceProofRaw = storedPresentation.deviceProofRaw || storedPresentation.deviceProof || storedPresentation.deviceBindingSignature;
-      storedPresentation.issuerDid = storedPresentation.issuerDid || (storedPresentation.rawProof && storedPresentation.rawProof.issuerDid);
+      storedPresentation.deviceProofRaw = storedPresentation.deviceProofRaw || storedPresentation.deviceProof || storedPresentation.deviceBindingSignature || storedPresentation.dp;
+      storedPresentation.issuerDid = storedPresentation.issuerDid || (storedPresentation.rawProof && storedPresentation.rawProof.issuerDid) || storedPresentation.iss;
+      storedPresentation.revealedStatements = storedPresentation.revealedStatements || storedPresentation.revealed || storedPresentation.r || [];
+
+      if (Array.isArray(storedPresentation.revealedStatements)) {
+        storedPresentation.revealedStatements = storedPresentation.revealedStatements.map(p => {
+          if (typeof p === 'string') return { predicateId: p, label: p, statement: p, value: true };
+          return {
+            predicateId: p.predicateId || p.id,
+            label: p.label || p.statement || p.predicateId || p.id,
+            statement: p.statement || p.label || p.id,
+            value: p.value !== false
+          };
+        });
+      }
     }
 
     const presentationNonce = storedPresentation ? storedPresentation.nonceBinding : null;
@@ -264,10 +290,10 @@ export default function VerifierPage() {
       // Auto-detect target verifier from stored presentation binding or disclosed predicates
       const boundVerifier = (storedPresentation && storedPresentation.verifierBinding);
       let matchingVerifier = boundVerifier ? allVerifiers.find(v => v.did === boundVerifier) : null;
-      if (!matchingVerifier && storedPresentation && storedPresentation.revealedStatements) {
-        const revealedIds = storedPresentation.revealedStatements.map(s => s.predicateId || s.id || s.label);
+      if (!matchingVerifier && storedPresentation && storedPresentation.revealedStatements && storedPresentation.revealedStatements.length > 0) {
+        const revealedIds = storedPresentation.revealedStatements.map(s => String(s.predicateId || s.id || s.label).toLowerCase());
         matchingVerifier = allVerifiers.find(v => 
-          v.requiredPredicates && v.requiredPredicates.some(rp => revealedIds.some(rid => String(rid).includes(rp) || rp.includes(String(rid))))
+          v.requiredPredicates && v.requiredPredicates.some(rp => revealedIds.some(rid => rid.includes(rp.toLowerCase()) || rp.toLowerCase().includes(rid)))
         );
       }
       if (matchingVerifier && matchingVerifier.id !== currentVerifier.id) {
@@ -276,7 +302,7 @@ export default function VerifierPage() {
 
       const activeVer = matchingVerifier || currentVerifier;
       const targetCred = CREDENTIALS.find(c => activeVer.allowedCredentialIds?.includes(c.id)) || CREDENTIALS[0];
-      const proofToTest = (storedPresentation && storedPresentation.revealedStatements)
+      const proofToTest = (storedPresentation && storedPresentation.revealedStatements && storedPresentation.revealedStatements.length > 0)
         ? storedPresentation
         : deriveBbsProof({
             credential: targetCred,

@@ -101,6 +101,21 @@ async function main() {
   );
   console.log(`  ✓ Registered: KDEM Academy (${KDEM_DID}) [BLS12-381 G2 PK: ${KDEM_KEYS.publicKeyHex.substring(0, 18)}...]`);
 
+  // Register DID aliases for cross-compatibility
+  const aliases = [
+    { did: "did:cv:gov-karnataka-ceg", name: "Center for e-Governance, Karnataka", key: CEG_KEYS.publicKeyHex, schemas: [ethers.id("ResidentIdentity_v2"), ethers.id("AddressCredential_v1")] },
+    { did: "did:cv:gov-accredited-authority", name: "Center for e-Governance, Karnataka (Accredited)", key: CEG_KEYS.publicKeyHex, schemas: [ethers.id("ResidentIdentity_v2"), ethers.id("CivicAttestation_v1")] },
+    { did: "did:shroud:gov-accredited-authority", name: "Center for e-Governance, Karnataka (Accredited)", key: CEG_KEYS.publicKeyHex, schemas: [ethers.id("ResidentIdentity_v2"), ethers.id("CivicAttestation_v1")] },
+    { did: "did:cv:bmtc-transit", name: "BMTC Transit Authority", key: BMTC_KEYS.publicKeyHex, schemas: [ethers.id("StudentTransitPass_v3")] },
+    { did: "did:cv:karnataka-dsw", name: "Directorate of Social Welfare", key: DSW_KEYS.publicKeyHex, schemas: [ethers.id("SocioEconomicBenefit_v2")] },
+    { did: "did:cv:kdem-cert", name: "Karnataka Digital Economy Mission", key: KDEM_KEYS.publicKeyHex, schemas: [ethers.id("ProfessionalSkillCert_v1")] }
+  ];
+
+  for (const alias of aliases) {
+    await issuerRegistry.registerIssuer(alias.did, alias.name, alias.key, alias.schemas);
+    console.log(`  ✓ Registered Alias: ${alias.did}`);
+  }
+
   // Anchor Initial Epoch #142 Merkle Status Root
   console.log("\nAnchoring Initial Epoch #142 Merkle Revocation Root...");
   const { generateEpochRevocationTree } = await import("../src/lib/cryptoSim.js");
