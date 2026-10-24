@@ -76,7 +76,7 @@ export default function Navbar({ onResetDemo }) {
           {/* Right Status Indicator & Persona Switcher */}
           <div className="flex items-center space-x-2">
             <Link
-              to="/login"
+              to="/wallet"
               className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700/80 hover:border-cyan-500/60 hover:bg-slate-800 transition-all text-xs"
               title="Citizen Identity & Enclave Portal"
             >

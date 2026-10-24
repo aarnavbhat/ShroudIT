@@ -29,7 +29,10 @@ import {
   Send,
   UserCheck,
   BadgeCheck,
-  Landmark
+  Landmark,
+  Search,
+  Users,
+  Filter
 } from 'lucide-react';
 import { GOV_PUBLIC_KEY_BASE64, verifyGovernmentSignature } from '../lib/governmentSigner';
 import { analyzeDocumentAndGenerateCredential, analyzeDocumentWithAi } from '../lib/documentAiEngine';
@@ -56,6 +59,24 @@ export default function DocumentIngestionPage() {
   });
   const [certSentSuccess, setCertSentSuccess] = useState(null);
   const [isSendingCert, setIsSendingCert] = useState(false);
+  const [citizenSearch, setCitizenSearch] = useState('');
+  const [citizenFilter, setCitizenFilter] = useState('all'); // 'all' | 'unverified' | 'verified'
+
+  // Filtered scalable citizen list
+  const filteredResidents = allResidents.filter((res) => {
+    const isVerified = res.isGovernmentVerified === true || (Array.isArray(res.certifications) && res.certifications.length > 0);
+    if (citizenFilter === 'unverified' && isVerified) return false;
+    if (citizenFilter === 'verified' && !isVerified) return false;
+
+    if (!citizenSearch.trim()) return true;
+    const q = citizenSearch.toLowerCase().trim();
+    return (
+      (res.name && res.name.toLowerCase().includes(q)) ||
+      (res.username && res.username.toLowerCase().includes(q)) ||
+      (res.nationalId && res.nationalId.toLowerCase().includes(q)) ||
+      (res.domicile && res.domicile.toLowerCase().includes(q))
+    );
+  });
 
   // Automatically keep selected citizen aligned
   useEffect(() => {
@@ -731,49 +752,127 @@ export default function DocumentIngestionPage() {
                     The government body selects which citizen account should receive this official certification. Unverified accounts become accredited and authorized to log in.
                   </p>
 
-                  {/* Citizen Selector List */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-slate-300 block">
-                      Choose Target Citizen Profile:
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
-                      {allResidents.map((res) => {
-                        const isSelected = selectedCitizenId === res.id;
-                        const isVerified = res.isGovernmentVerified === true || (Array.isArray(res.certifications) && res.certifications.length > 0);
-                        return (
-                          <div
-                            key={res.id}
-                            onClick={() => setSelectedCitizenId(res.id)}
-                            className={`p-2.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between text-left ${
-                              isSelected
-                                ? 'bg-cyan-950/70 border-cyan-400 ring-2 ring-cyan-500/50 shadow-md shadow-cyan-950/60'
-                                : 'bg-black/50 border-slate-800 hover:border-slate-700'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-1">
-                              <div>
-                                <span className="text-xs font-bold text-white block">{res.name}</span>
-                                <span className="text-[10px] font-mono text-slate-400">@{res.username || res.id}</span>
-                              </div>
-                              {isVerified ? (
-                                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center space-x-0.5 font-bold shrink-0">
-                                  <BadgeCheck className="w-2.5 h-2.5" />
-                                  <span>Verified</span>
-                                </span>
-                              ) : (
-                                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800 flex items-center space-x-0.5 font-bold shrink-0">
-                                  <Lock className="w-2.5 h-2.5" />
-                                  <span>Unverified</span>
-                                </span>
-                              )}
-                            </div>
-                            <div className="mt-1.5 pt-1 border-t border-slate-800/60 text-[10px] text-slate-400 truncate">
-                              {res.domicile}
-                            </div>
-                          </div>
-                        );
-                      })}
+                  {/* Scalable Search & Filter Bar */}
+                  <div className="space-y-2">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <div className="relative flex-1">
+                        <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={citizenSearch}
+                          onChange={(e) => setCitizenSearch(e.target.value)}
+                          placeholder="Search citizens by name, @username, civic ID, or city..."
+                          className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-black/60 border border-slate-700/80 text-white text-xs font-mono placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                        />
+                      </div>
+
+                      {/* Filter Chips */}
+                      <div className="flex items-center space-x-1 shrink-0 bg-slate-900/80 p-1 rounded-xl border border-slate-800 text-[10px] font-mono">
+                        <button
+                          type="button"
+                          onClick={() => setCitizenFilter('all')}
+                          className={`px-2 py-1 rounded-lg transition-all ${
+                            citizenFilter === 'all'
+                              ? 'bg-cyan-500 text-black font-bold'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          All ({allResidents.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCitizenFilter('unverified')}
+                          className={`px-2 py-1 rounded-lg transition-all ${
+                            citizenFilter === 'unverified'
+                              ? 'bg-rose-500 text-black font-bold'
+                              : 'text-rose-400 hover:text-rose-300'
+                          }`}
+                        >
+                          🔴 Unverified ({allResidents.filter(r => !r.isGovernmentVerified).length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCitizenFilter('verified')}
+                          className={`px-2 py-1 rounded-lg transition-all ${
+                            citizenFilter === 'verified'
+                              ? 'bg-emerald-500 text-black font-bold'
+                              : 'text-emerald-400 hover:text-emerald-300'
+                          }`}
+                        >
+                          🟢 Verified ({allResidents.filter(r => r.isGovernmentVerified).length})
+                        </button>
+                      </div>
                     </div>
+
+                    {/* Scalable High-Density Citizen List */}
+                    <div className="rounded-xl border border-slate-800 bg-black/50 divide-y divide-slate-800/80 max-h-52 overflow-y-auto pr-1">
+                      {filteredResidents.length === 0 ? (
+                        <div className="p-4 text-center text-xs text-slate-500">
+                          No citizens found matching "{citizenSearch}".
+                        </div>
+                      ) : (
+                        filteredResidents.map((res) => {
+                          const isSelected = selectedCitizenId === res.id;
+                          const isVerified = res.isGovernmentVerified === true || (Array.isArray(res.certifications) && res.certifications.length > 0);
+                          return (
+                            <div
+                              key={res.id}
+                              onClick={() => setSelectedCitizenId(res.id)}
+                              className={`px-3 py-2 cursor-pointer transition-colors flex items-center justify-between text-xs gap-2 ${
+                                isSelected
+                                  ? 'bg-cyan-950/70 border-l-4 border-l-cyan-400 ring-1 ring-cyan-500/30'
+                                  : 'hover:bg-slate-900/60'
+                              }`}
+                            >
+                              <div className="flex items-center space-x-2.5 min-w-0">
+                                <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${
+                                  isSelected
+                                    ? 'border-cyan-400 bg-cyan-400'
+                                    : 'border-slate-600 bg-slate-900'
+                                }`}>
+                                  {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-black"></div>}
+                                </div>
+                                <span className="font-bold text-white truncate">{res.name}</span>
+                                <span className="font-mono text-[10px] text-cyan-400 shrink-0">@{res.username || res.id}</span>
+                                <span className="text-[11px] text-slate-400 hidden sm:inline truncate">• {res.domicile}</span>
+                              </div>
+
+                              <div className="flex items-center space-x-2 shrink-0">
+                                <span className="text-[10px] font-mono text-slate-500 hidden md:inline">
+                                  {res.nationalId}
+                                </span>
+                                {isVerified ? (
+                                  <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center space-x-0.5 font-bold">
+                                    <BadgeCheck className="w-2.5 h-2.5" />
+                                    <span>Verified</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-rose-950 text-rose-300 border border-rose-800 flex items-center space-x-0.5 font-bold">
+                                    <Lock className="w-2.5 h-2.5" />
+                                    <span>Unverified</span>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Active Selected Recipient Summary Bar */}
+                    {selectedCitizenId && (
+                      <div className="p-2 rounded-lg bg-cyan-950/30 border border-cyan-800/40 text-[11px] text-slate-300 flex items-center justify-between">
+                        <div className="flex items-center space-x-1.5 truncate">
+                          <span className="text-slate-400 font-semibold">Selected Recipient:</span>
+                          <span className="text-white font-bold">{allResidents.find(r => r.id === selectedCitizenId)?.name}</span>
+                          <span className="text-cyan-400 font-mono">(@{allResidents.find(r => r.id === selectedCitizenId)?.username})</span>
+                          <span className="text-slate-400 hidden sm:inline">— {allResidents.find(r => r.id === selectedCitizenId)?.domicile}</span>
+                        </div>
+                        <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800 shrink-0">
+                          {allResidents.find(r => r.id === selectedCitizenId)?.isGovernmentVerified ? "🟢 Verified" : "🔴 Pending"}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Dispatch Action Button */}
@@ -810,21 +909,21 @@ export default function DocumentIngestionPage() {
                       </p>
                       <div className="pt-1.5 flex flex-wrap items-center gap-2">
                         <button
-                          onClick={() => navigate('/login')}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs flex items-center space-x-1"
-                        >
-                          <UserCheck className="w-3.5 h-3.5" />
-                          <span>Go to Citizen Login</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                        <button
                           onClick={() => {
                             if (loginAsResident) loginAsResident(certSentSuccess.citizen);
                             navigate('/wallet');
                           }}
+                          className="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs flex items-center space-x-1 shadow-md shadow-emerald-500/20"
+                        >
+                          <UserCheck className="w-3.5 h-3.5" />
+                          <span>Open Resident Wallet as {certSentSuccess.citizen.name}</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => navigate('/wallet')}
                           className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-200 text-xs font-semibold"
                         >
-                          Directly Open Wallet as {certSentSuccess.citizen.name}
+                          Return to Wallet Login Portal
                         </button>
                       </div>
                     </div>

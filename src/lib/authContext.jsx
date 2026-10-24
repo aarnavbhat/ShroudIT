@@ -60,6 +60,7 @@ const DEFAULT_RESIDENTS = [
   {
     id: "res-aarav",
     username: "aarav",
+    password: "aarav123",
     name: "Aarav S. Rao",
     dob: "2003-08-14",
     domicile: "Bengaluru Urban (Ward 142)",
@@ -88,6 +89,7 @@ const DEFAULT_RESIDENTS = [
   {
     id: "res-priya",
     username: "priya",
+    password: "priya123",
     name: "Priya Sharma",
     dob: "1998-04-22",
     domicile: "Bengaluru South (Ward 180)",
@@ -102,6 +104,7 @@ const DEFAULT_RESIDENTS = [
   {
     id: "res-rohan",
     username: "rohan",
+    password: "rohan123",
     name: "Rohan Gupta",
     dob: "2005-11-09",
     domicile: "Bengaluru North (Ward 028)",
@@ -161,9 +164,7 @@ export function AuthProvider({ children }) {
         const parsed = JSON.parse(savedSession);
         if (parsed.role) setCurrentRole(parsed.role);
         if (parsed.user) {
-          // Sync with the latest resident data in combinedResidents
           const fresh = combinedResidents.find(r => r.id === parsed.user.id) || parsed.user;
-          // Only maintain citizen session if they are government verified
           if (parsed.role !== 'resident' || fresh.isGovernmentVerified) {
             setCurrentUser(fresh);
           } else {
@@ -199,11 +200,13 @@ export function AuthProvider({ children }) {
     } catch (e) {}
   };
 
-  // --- RESIDENT AUTHENTICATION ---
+  // --- RESIDENT AUTHENTICATION (USERNAME & PASSWORD BASED) ---
   // Core Rule: Accounts ONLY become valid once they have government certification.
   // Otherwise, user cannot log in and receives: "not verified by government".
-  const loginAsResident = (residentOrIdentifier) => {
+  const loginAsResident = (residentOrIdentifier, password) => {
     let target = null;
+    let pass = password;
+
     if (typeof residentOrIdentifier === 'string') {
       const query = residentOrIdentifier.trim().toLowerCase();
       target = allResidents.find(r => 
@@ -213,14 +216,38 @@ export function AuthProvider({ children }) {
         (r.name && r.name.toLowerCase() === query)
       );
     } else if (residentOrIdentifier && typeof residentOrIdentifier === 'object') {
-      target = allResidents.find(r => r.id === residentOrIdentifier.id) || residentOrIdentifier;
+      if (residentOrIdentifier.username) {
+        const query = residentOrIdentifier.username.trim().toLowerCase();
+        target = allResidents.find(r => 
+          r.id === residentOrIdentifier.username || 
+          (r.username && r.username.toLowerCase() === query) ||
+          (r.nationalId && r.nationalId.toLowerCase() === query)
+        );
+        if (residentOrIdentifier.password !== undefined) {
+          pass = residentOrIdentifier.password;
+        }
+      } else {
+        target = allResidents.find(r => r.id === residentOrIdentifier.id) || residentOrIdentifier;
+      }
     }
 
     if (!target) {
       return {
         success: false,
-        error: "Citizen account not found. Please create an account first."
+        error: "Citizen account not found. Please check your username or register a new account."
       };
+    }
+
+    // Password validation (when password is provided)
+    if (pass !== undefined && pass !== null && pass !== '') {
+      const expectedPass = target.password || "password123";
+      if (pass !== expectedPass) {
+        return {
+          success: false,
+          error: "Invalid username or password. Please try again.",
+          resident: target
+        };
+      }
     }
 
     // STRICT VERIFICATION CHECK:
@@ -243,7 +270,7 @@ export function AuthProvider({ children }) {
 
   // Option to create as many citizen accounts as possible.
   // Newly created accounts start as unverified (pending government certification).
-  const createCustomResident = ({ name, username, dob, domicile, nationalId, isStudent }) => {
+  const createCustomResident = ({ name, username, password, dob, domicile, nationalId, isStudent }) => {
     const hwKey = generateDeviceHardwareKey();
     const cleanDid = `did:key:z6Mk${hwKey.publicKeyHex.substring(0, 10)}...${hwKey.publicKeyHex.substring(56)}`;
     const cleanUsername = (username || name.toLowerCase().replace(/[^a-z0-9]/g, '')).trim();
@@ -251,6 +278,7 @@ export function AuthProvider({ children }) {
     const newResident = {
       id: `res-${Date.now().toString(36)}-${Math.floor(Math.random() * 1000)}`,
       username: cleanUsername,
+      password: password || "password123",
       name: name.trim(),
       dob: dob || "2000-01-01",
       domicile: domicile || "Bengaluru Urban",

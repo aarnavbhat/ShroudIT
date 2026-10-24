@@ -23,7 +23,18 @@ import {
   ChevronRight,
   EyeOff,
   Download,
-  Database
+  Database,
+  UserCheck,
+  BadgeCheck,
+  UserPlus,
+  LogIn,
+  Eye,
+  LogOut,
+  Building2,
+  ArrowRight,
+  Clock,
+  Key,
+  UserCircle
 } from 'lucide-react';
 import CredentialCard from '../components/CredentialCard';
 import ConsentExplainerModal from '../components/ConsentExplainerModal';
@@ -45,7 +56,106 @@ export default function WalletPage() {
   const currentUser = auth?.currentUser;
   const allVerifiers = auth?.allVerifiers || VERIFIERS;
   const allIssuers = auth?.allIssuers || [];
+  const allResidents = auth?.allResidents || [];
   const userCredentials = auth?.userCredentials || CREDENTIALS;
+  const loginAsResident = auth?.loginAsResident;
+  const createCustomResident = auth?.createCustomResident;
+  const logout = auth?.logout;
+
+  // Authentication & Embedded Login Portal State
+  const isUserVerified = !!(currentUser && (currentUser.isGovernmentVerified === true || (Array.isArray(currentUser.certifications) && currentUser.certifications.length > 0)));
+  const [showAuthPortal, setShowAuthPortal] = useState(!isUserVerified);
+  const [authTab, setAuthTab] = useState('signin'); // 'signin' | 'register'
+
+  // Username & Password credentials
+  const [loginUsername, setLoginUsername] = useState('aarav');
+  const [loginPassword, setLoginPassword] = useState('aarav123');
+  const [showPassword, setShowPassword] = useState(false);
+  const [authError, setAuthError] = useState(null);
+  const [authSuccess, setAuthSuccess] = useState(null);
+
+  // Registration state
+  const [regName, setRegName] = useState('');
+  const [regUsername, setRegUsername] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regDob, setRegDob] = useState('2002-05-18');
+  const [regDomicile, setRegDomicile] = useState('Bengaluru Urban');
+  const [regIsStudent, setRegIsStudent] = useState(false);
+  const [recentlyCreated, setRecentlyCreated] = useState(null);
+
+  // Keep portal synchronized
+  useEffect(() => {
+    if (!isUserVerified) {
+      setShowAuthPortal(true);
+    }
+  }, [isUserVerified]);
+
+  const handleLoginSubmit = (e) => {
+    if (e) e.preventDefault();
+    setAuthError(null);
+    setAuthSuccess(null);
+
+    if (!loginUsername.trim()) return;
+
+    const result = loginAsResident({
+      username: loginUsername.trim(),
+      password: loginPassword
+    });
+
+    if (result.success) {
+      setAuthSuccess(`Identity authenticated! Welcome, ${result.resident.name}.`);
+      setTimeout(() => {
+        setShowAuthPortal(false);
+        setAuthSuccess(null);
+      }, 500);
+    } else {
+      setAuthError({
+        title: result.error === "not verified by government"
+          ? "Login Blocked: Not Verified by Government"
+          : "Authentication Failed",
+        phrase: result.error || "not verified by government",
+        message: result.message || result.error,
+        resident: result.resident
+      });
+    }
+  };
+
+  const handleRegisterSubmit = (e) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthSuccess(null);
+
+    if (!regName.trim() || !regPassword) return;
+
+    const res = createCustomResident({
+      name: regName.trim(),
+      username: regUsername.trim() || regName.toLowerCase().replace(/[^a-z0-9]/g, ''),
+      password: regPassword,
+      dob: regDob,
+      domicile: regDomicile.trim(),
+      isStudent: regIsStudent
+    });
+
+    setRecentlyCreated(res.resident);
+    setLoginUsername(res.resident.username);
+    setLoginPassword(regPassword);
+    setAuthTab('signin');
+
+    setAuthError({
+      title: "Account Created: Pending Government Verification",
+      phrase: "not verified by government",
+      message: `Account created for "${res.resident.name}" (@${res.resident.username}). As required by protocol rules, this account is not verified by government yet and cannot log in until an accredited authority sends an official certification.`,
+      resident: res.resident,
+      isNoticeOnly: true
+    });
+  };
+
+  const handleSelectQuickAccount = (res) => {
+    setLoginUsername(res.username || res.id);
+    setLoginPassword(res.password || 'password123');
+    setAuthError(null);
+    setAuthSuccess(null);
+  };
 
   const [credentials, setCredentials] = useState(userCredentials);
   const [selectedCredId, setSelectedCredId] = useState(userCredentials[0]?.id || CREDENTIALS[0].id);
@@ -260,7 +370,362 @@ export default function WalletPage() {
         </div>
       </div>
 
-      {/* Over-Asking Warning Banner (Dynamic Programmatic Firewall Audit) */}
+      {/* EMBEDDED CITIZEN LOGIN & REGISTRATION PORTAL */}
+      {showAuthPortal ? (
+        <div className="max-w-3xl mx-auto space-y-6 animate-fadeIn">
+          {/* Header */}
+          <div className="text-center space-y-2">
+            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-cyan-950/80 text-cyan-400 border border-cyan-800/60 font-mono text-xs font-semibold">
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>Resident Enclave • Citizen Authentication</span>
+            </div>
+            <h2 className="text-3xl font-extrabold text-white">
+              Citizen Login & Enclave Access
+            </h2>
+            <p className="text-xs text-slate-400 max-w-lg mx-auto">
+              Sign in with your username & password to decrypt your zero-knowledge wallet. Newly created accounts <strong>only become valid once certified by the government</strong>.
+            </p>
+          </div>
+
+          {/* Mode Switcher */}
+          <div className="flex justify-center">
+            <div className="p-1 rounded-2xl bg-slate-900 border border-slate-800 flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => { setAuthTab('signin'); setAuthError(null); }}
+                className={`flex items-center space-x-2 px-5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  authTab === 'signin'
+                    ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <LogIn className="w-4 h-4" />
+                <span>Citizen Sign In</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setAuthTab('register'); setAuthError(null); }}
+                className={`flex items-center space-x-2 px-5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  authTab === 'register'
+                    ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Create New Account</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Rejection / Blocking Banner: "not verified by government" */}
+          {authError && (
+            <div className={`p-4 rounded-2xl border transition-all animate-fadeIn ${
+              authError.isNoticeOnly
+                ? 'bg-amber-950/30 border-amber-500/60 text-amber-200'
+                : 'bg-rose-950/40 border-rose-500/80 text-rose-200'
+            }`}>
+              <div className="flex items-start space-x-3">
+                <div className={`p-2 rounded-xl border shrink-0 ${
+                  authError.isNoticeOnly
+                    ? 'bg-amber-900/40 border-amber-600/60 text-amber-400'
+                    : 'bg-rose-900/50 border-rose-600/70 text-rose-300'
+                }`}>
+                  {authError.isNoticeOnly ? <Clock className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
+                </div>
+                <div className="space-y-1.5 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-sm font-bold text-white">
+                      {authError.title}
+                    </h4>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-black/60 text-rose-300 border border-rose-800 uppercase font-bold">
+                      {authError.phrase}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    {authError.message}
+                  </p>
+
+                  <div className="pt-1.5 flex flex-wrap items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => navigate('/documents')}
+                      className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs flex items-center space-x-1 shadow-md shadow-cyan-500/20"
+                    >
+                      <Building2 className="w-3.5 h-3.5" />
+                      <span>Open Gov Ingestion Gateway</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-[11px] text-slate-400">
+                      Accredited authorities issue certifications to unverified citizens there.
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Success Banner */}
+          {authSuccess && (
+            <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/70 text-emerald-200 flex items-center space-x-2.5 animate-fadeIn">
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+              <span className="text-xs font-semibold">{authSuccess}</span>
+            </div>
+          )}
+
+          {/* TAB 1: SIGN IN WITH USERNAME & PASSWORD */}
+          {authTab === 'signin' && (
+            <div className="rounded-3xl glass-panel p-6 border border-cyan-500/30 space-y-5">
+              <form onSubmit={handleLoginSubmit} className="space-y-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">
+                    Citizen Username:
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                      <UserCheck className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      value={loginUsername}
+                      onChange={(e) => setLoginUsername(e.target.value)}
+                      placeholder="e.g. aarav, priya, or custom username"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-mono placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">
+                    Password:
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                      <Key className="w-4 h-4" />
+                    </div>
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      placeholder="Enter password"
+                      className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-mono placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-500 hover:text-slate-300"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-extrabold uppercase tracking-wider text-xs shadow-lg shadow-cyan-500/20 hover:brightness-110 flex items-center justify-center space-x-2 transition-all"
+                >
+                  <LogIn className="w-4 h-4" />
+                  <span>Sign In & Decrypt Wallet Enclave</span>
+                </button>
+              </form>
+
+              {/* Quick Autofill Account Selector */}
+              <div className="pt-3 border-t border-slate-800 space-y-2">
+                <span className="text-[11px] font-semibold text-slate-400 block">
+                  Quick Select Citizen Account (Click to Autofill):
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {allResidents.map((res) => {
+                    const isVerified = res.isGovernmentVerified === true || (Array.isArray(res.certifications) && res.certifications.length > 0);
+                    const isSelected = loginUsername.toLowerCase() === (res.username || res.id).toLowerCase();
+                    return (
+                      <button
+                        key={res.id}
+                        type="button"
+                        onClick={() => handleSelectQuickAccount(res)}
+                        className={`px-3 py-1.5 rounded-xl text-[11px] font-mono border transition-all flex items-center space-x-1.5 ${
+                          isSelected
+                            ? 'bg-cyan-950 text-cyan-300 border-cyan-500 ring-1 ring-cyan-500/40'
+                            : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        <span className="font-bold">{res.name}</span>
+                        <span className="text-slate-400">(@{res.username || res.id})</span>
+                        {isVerified ? (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-bold">
+                            Verified
+                          </span>
+                        ) : (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800 font-bold">
+                            Unverified
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Return to active wallet if verified */}
+              {isUserVerified && (
+                <div className="pt-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setShowAuthPortal(false)}
+                    className="text-xs text-cyan-400 hover:text-cyan-300 underline font-mono"
+                  >
+                    ← Return to active wallet ({currentUser?.name})
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 2: REGISTER NEW CITIZEN ACCOUNT */}
+          {authTab === 'register' && (
+            <div className="rounded-3xl glass-panel p-6 border border-cyan-500/30 space-y-4">
+              <div className="flex items-center space-x-2 pb-2 border-b border-slate-800">
+                <UserPlus className="w-5 h-5 text-cyan-400" />
+                <h3 className="text-base font-bold text-white">Create New Citizen Account</h3>
+              </div>
+
+              <p className="text-xs text-slate-400">
+                You can create as many citizen accounts as needed. Accounts derive local Ed25519 hardware keys, but <strong>only become valid once certified by the government</strong>.
+              </p>
+
+              <form onSubmit={handleRegisterSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
+                <div>
+                  <label className="text-slate-300 font-semibold block mb-1">Full Legal Name:</label>
+                  <input
+                    type="text"
+                    required
+                    value={regName}
+                    onChange={(e) => setRegName(e.target.value)}
+                    placeholder="e.g. John Doe"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-400 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-slate-300 font-semibold block mb-1">Username:</label>
+                  <input
+                    type="text"
+                    value={regUsername}
+                    onChange={(e) => setRegUsername(e.target.value)}
+                    placeholder="e.g. john_doe (optional)"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-400 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-slate-300 font-semibold block mb-1">Password:</label>
+                  <input
+                    type="password"
+                    required
+                    value={regPassword}
+                    onChange={(e) => setRegPassword(e.target.value)}
+                    placeholder="Choose password"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-400 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-slate-300 font-semibold block mb-1">Date of Birth:</label>
+                  <input
+                    type="date"
+                    value={regDob}
+                    onChange={(e) => setRegDob(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-400 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-slate-300 font-semibold block mb-1">Domicile (City / State):</label>
+                  <input
+                    type="text"
+                    value={regDomicile}
+                    onChange={(e) => setRegDomicile(e.target.value)}
+                    placeholder="e.g. Bengaluru Urban or Mumbai"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-cyan-400 font-medium"
+                  />
+                </div>
+
+                <div className="flex items-center space-x-2 pt-6">
+                  <label className="flex items-center space-x-2 text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={regIsStudent}
+                      onChange={(e) => setRegIsStudent(e.target.checked)}
+                      className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-cyan-500 focus:ring-0"
+                    />
+                    <span>Enrolled Student</span>
+                  </label>
+                </div>
+
+                <div className="md:col-span-2 pt-2">
+                  <button
+                    type="submit"
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-extrabold uppercase tracking-wider text-xs shadow-lg shadow-cyan-500/20 hover:brightness-110 flex items-center justify-center space-x-2 transition-all"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>Register Citizen Profile (Pending Government Certification)</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* Active Verified Citizen Identity Ribbon */}
+          {isUserVerified && (
+            <div className="p-4 rounded-2xl glass-panel border border-cyan-500/30 bg-cyan-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shrink-0">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className="font-bold text-white text-sm">{currentUser?.name}</span>
+                    <span className="text-[11px] font-mono text-cyan-300">@{currentUser?.username || currentUser?.id}</span>
+                    <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold flex items-center space-x-1">
+                      <BadgeCheck className="w-2.5 h-2.5" />
+                      <span>Government Verified</span>
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    DID: <span className="font-mono text-cyan-400">{currentUser?.did || "did:key:..."}</span> • Domicile: {currentUser?.domicile}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setShowAuthPortal(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-900 border border-slate-700 hover:border-cyan-500 text-xs text-cyan-300 font-bold flex items-center space-x-1.5 transition-colors"
+                  title="Switch to another citizen account or register new profile"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>Switch Citizen / Register</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    logout();
+                    setShowAuthPortal(true);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-rose-500 hover:bg-rose-950/30 text-xs text-slate-400 hover:text-rose-400 font-bold flex items-center space-x-1 transition-colors"
+                  title="Sign out of current citizen enclave"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            </div>
+          )}
       {overAskingTriggered && firewallAudit && (
         <div className="p-5 rounded-2xl bg-rose-950/40 border border-rose-600/60 text-rose-200 animate-fadeIn space-y-3">
           <div className="flex items-start justify-between">
@@ -777,6 +1242,8 @@ export default function WalletPage() {
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
 
       {/* Multilingual Consent Explainer Modal */}

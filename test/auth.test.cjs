@@ -483,12 +483,13 @@ describe("ShroudIT Dynamic Authentication, Government On-Chain Accreditation & M
 
   describe("10. Citizen Account Creation, Government Verification & Login Validation", function () {
     // Model the exact authentication & government binding state engine
-    function createCitizenAccount({ name, username, dob, domicile, isStudent }) {
+    function createCitizenAccount({ name, username, password, dob, domicile, isStudent }) {
       const hwKey = bbs.generateDeviceHardwareKey();
       const cleanDid = `did:key:z6Mk${hwKey.publicKeyHex.substring(0, 10)}...${hwKey.publicKeyHex.substring(56)}`;
       return {
         id: `res-${Date.now().toString(36)}-${Math.floor(Math.random() * 1000)}`,
         username: (username || name.toLowerCase().replace(/[^a-z0-9]/g, '')).trim(),
+        password: password || "password123",
         name: name.trim(),
         dob: dob || "2000-01-01",
         domicile: domicile || "Bengaluru Urban",
@@ -503,9 +504,15 @@ describe("ShroudIT Dynamic Authentication, Government On-Chain Accreditation & M
       };
     }
 
-    function attemptCitizenLogin(user) {
+    function attemptCitizenLogin(user, password) {
       if (!user) {
         return { success: false, error: "Citizen account not found." };
+      }
+      if (password !== undefined && password !== null) {
+        const expected = user.password || "password123";
+        if (password !== expected) {
+          return { success: false, error: "Invalid username or password" };
+        }
       }
       const isVerified = user.isGovernmentVerified === true || (Array.isArray(user.certifications) && user.certifications.length > 0);
       if (!isVerified) {
@@ -537,14 +544,15 @@ describe("ShroudIT Dynamic Authentication, Government On-Chain Accreditation & M
       };
     }
 
-    it("should allow creating multiple citizen accounts with unverified status", function () {
-      const acc1 = createCitizenAccount({ name: "Aarushi Verma", username: "aarushi_v", domicile: "Mumbai, Maharashtra" });
-      const acc2 = createCitizenAccount({ name: "Kabir Mehta", username: "kabir_m", domicile: "Delhi NCR" });
+    it("should allow creating multiple citizen accounts with unverified status and passwords", function () {
+      const acc1 = createCitizenAccount({ name: "Aarushi Verma", username: "aarushi_v", password: "secpass123", domicile: "Mumbai, Maharashtra" });
+      const acc2 = createCitizenAccount({ name: "Kabir Mehta", username: "kabir_m", password: "mypassword", domicile: "Delhi NCR" });
       const acc3 = createCitizenAccount({ name: "Divya Nair", username: "divya_n", domicile: "Kochi, Kerala" });
 
       expect(acc1.isGovernmentVerified).to.equal(false);
       expect(acc1.status).to.equal("PENDING_GOV_VERIFICATION");
       expect(acc1.certifications).to.have.lengthOf(0);
+      expect(acc1.password).to.equal("secpass123");
       expect(acc1.hardwareKey.publicKeyHex).to.be.a("string").with.lengthOf(64);
 
       expect(acc2.isGovernmentVerified).to.equal(false);
@@ -552,23 +560,31 @@ describe("ShroudIT Dynamic Authentication, Government On-Chain Accreditation & M
       expect(acc1.did).to.not.equal(acc2.did);
     });
 
-    it("should reject login attempt for unverified citizen with 'not verified by government'", function () {
-      const unverifiedCitizen = createCitizenAccount({ name: "Tarun Reddy", username: "tarun_r" });
+    it("should reject login attempt when password is incorrect", function () {
+      const citizen = createCitizenAccount({ name: "Tarun Reddy", username: "tarun_r", password: "correctPassword" });
 
-      const loginResult = attemptCitizenLogin(unverifiedCitizen);
+      const loginResult = attemptCitizenLogin(citizen, "wrongPassword");
+
+      expect(loginResult.success).to.equal(false);
+      expect(loginResult.error).to.equal("Invalid username or password");
+    });
+
+    it("should reject login attempt for unverified citizen with 'not verified by government' even with correct password", function () {
+      const unverifiedCitizen = createCitizenAccount({ name: "Tarun Reddy", username: "tarun_r", password: "myPassword123" });
+
+      const loginResult = attemptCitizenLogin(unverifiedCitizen, "myPassword123");
 
       expect(loginResult.success).to.equal(false);
       expect(loginResult.error).to.equal("not verified by government");
       expect(loginResult.message.toLowerCase()).to.include("not verified by government");
     });
 
-    it("should allow government to select citizen, bind certification, and activate their account for login", function () {
+    it("should allow government to select citizen, bind certification, and activate their account for password login", function () {
       // 1. Citizen registers
-      const citizen = createCitizenAccount({ name: "Suresh Patil", username: "suresh_p", domicile: "Hubballi, Karnataka" });
-      expect(attemptCitizenLogin(citizen).success).to.equal(false);
+      const citizen = createCitizenAccount({ name: "Suresh Patil", username: "suresh_p", password: "sureshPass", domicile: "Hubballi, Karnataka" });
+      expect(attemptCitizenLogin(citizen, "sureshPass").success).to.equal(false);
 
       // 2. Government issues credential
-      const govIssuer = bbs.generateIssuerKeyPair();
       const credential = {
         id: "cred-karnataka-smart-city",
         title: "Karnataka Smart City Domicile Certificate",
@@ -589,25 +605,44 @@ describe("ShroudIT Dynamic Authentication, Government On-Chain Accreditation & M
       expect(certifiedCitizen.certifications).to.have.lengthOf(1);
       expect(certifiedCitizen.certifications[0].title).to.equal("Karnataka Smart City Domicile Certificate");
 
-      // 4. Citizen can now log in successfully!
-      const loginResult = attemptCitizenLogin(certifiedCitizen);
+      // 4. Citizen can now log in successfully with correct password!
+      const loginResult = attemptCitizenLogin(certifiedCitizen, "sureshPass");
       expect(loginResult.success).to.equal(true);
       expect(loginResult.user.name).to.equal("Suresh Patil");
       expect(loginResult.user.isGovernmentVerified).to.equal(true);
     });
 
     it("should ensure other unverified accounts remain blocked until specifically certified", function () {
-      const citizenA = createCitizenAccount({ name: "Citizen A", username: "cit_a" });
-      const citizenB = createCitizenAccount({ name: "Citizen B", username: "cit_b" });
+      const citizenA = createCitizenAccount({ name: "Citizen A", username: "cit_a", password: "passA" });
+      const citizenB = createCitizenAccount({ name: "Citizen B", username: "cit_b", password: "passB" });
 
       // Government certifies only Citizen A
       const certifiedA = bindGovernmentCertification(citizenA, { id: "cred-a", title: "Gov Cert A" });
 
-      expect(attemptCitizenLogin(certifiedA).success).to.equal(true);
+      expect(attemptCitizenLogin(certifiedA, "passA").success).to.equal(true);
       // Citizen B must still be blocked
-      const attemptB = attemptCitizenLogin(citizenB);
+      const attemptB = attemptCitizenLogin(citizenB, "passB");
       expect(attemptB.success).to.equal(false);
       expect(attemptB.error).to.equal("not verified by government");
+    });
+
+    it("should support scalable search and filtering over citizen directories", function () {
+      const directory = [
+        createCitizenAccount({ name: "Meera Patel", username: "meera_p", domicile: "Ahmedabad, Gujarat" }),
+        createCitizenAccount({ name: "Rahul Deshmukh", username: "rahul_d", domicile: "Pune, Maharashtra" }),
+        bindGovernmentCertification(createCitizenAccount({ name: "Ananya Iyer", username: "ananya_i", domicile: "Chennai, Tamil Nadu" }), { id: "c1" })
+      ];
+
+      const searchPune = directory.filter(c => c.domicile.includes("Pune") || c.name.includes("Pune"));
+      expect(searchPune).to.have.lengthOf(1);
+      expect(searchPune[0].name).to.equal("Rahul Deshmukh");
+
+      const unverified = directory.filter(c => !c.isGovernmentVerified);
+      expect(unverified).to.have.lengthOf(2);
+
+      const verified = directory.filter(c => c.isGovernmentVerified);
+      expect(verified).to.have.lengthOf(1);
+      expect(verified[0].name).to.equal("Ananya Iyer");
     });
   });
 });
