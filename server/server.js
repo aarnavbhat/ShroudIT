@@ -205,9 +205,9 @@ app.post('/api/verifier/verify', (req, res) => {
 // --- Government Document Verification API (ECDSA NIST P-256 / DER) ---
 app.post('/api/government/verify', async (req, res) => {
   try {
-    const { document, signature } = req.body || {};
+    const { document, signature, rawText } = req.body || {};
     const targetDoc = document || req.body;
-    const result = await verifyGovernmentSignature(targetDoc, signature);
+    const result = await verifyGovernmentSignature(targetDoc, signature, rawText);
     return res.json(result);
   } catch (err) {
     return res.status(500).json({ valid: false, reason: err.message });

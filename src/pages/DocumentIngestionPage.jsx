@@ -98,7 +98,7 @@ export default function DocumentIngestionPage() {
     // Simulate brief cryptographic check delay for UX feedback
     setTimeout(async () => {
       // 1. Cryptographic Signature Verification against Government Public Key
-      const sigCheck = await verifyGovernmentSignature(documentContent);
+      const sigCheck = await verifyGovernmentSignature(documentContent, null, rawTextJson);
 
       if (!sigCheck.valid) {
         setVerificationResult({
