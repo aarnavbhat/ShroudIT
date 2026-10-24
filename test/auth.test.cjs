@@ -49,6 +49,51 @@ describe("ShroudIT Dynamic Authentication, Government On-Chain Accreditation & M
       expect(result.valid).to.equal(true);
       expect(result.zeroPiiLeaked).to.equal(true);
     });
+
+    it("should dynamically bind proof to active resident device key and reject mismatched or tampered keys", async function () {
+      const cryptoSim = await import("../src/lib/cryptoSim.js");
+      const activeResidentKey = bbs.generateDeviceHardwareKey();
+      const attackerKey = bbs.generateDeviceHardwareKey();
+
+      const cred = {
+        category: "Identity",
+        issuer: "CeG",
+        rawData: { fullName: "Aarav S. Rao", nationalId: "IN-8891", dob: "2003-08-14" },
+        predicates: [{ id: "over_18", label: "Age >= 18", statement: "Over 18", value: true }]
+      };
+
+      const nonce = "0xsession-challenge-live-7721";
+      const verifierDid = "did:shroud:verifier-library";
+
+      // Derive proof with active resident key
+      const proof = cryptoSim.deriveBbsProof({
+        credential: cred,
+        selectedPredicateIds: ["over_18"],
+        nonce,
+        verifierDid,
+        deviceHardwareKey: activeResidentKey
+      });
+
+      expect(proof.devicePublicKey).to.equal(activeResidentKey.publicKeyHex);
+      expect(proof.deviceProofRaw).to.be.a("string").with.lengthOf(128);
+
+      // Verify legitimate proof
+      const legitimateVerify = cryptoSim.verifyProof(proof, nonce, verifierDid);
+      expect(legitimateVerify.valid).to.equal(true);
+
+      // Tampered proof with different device public key must fail
+      const tamperedProof = {
+        ...proof,
+        rawProof: {
+          ...proof.rawProof,
+          devicePublicKey: attackerKey.publicKeyHex
+        }
+      };
+
+      const tamperedVerify = cryptoSim.verifyProof(tamperedProof, nonce, verifierDid);
+      expect(tamperedVerify.valid).to.equal(false);
+      expect(tamperedVerify.issues.some(i => i.includes("Device hardware binding signature invalid"))).to.equal(true);
+    });
   });
 
   describe("2. Government Authority Accreditation & BLS12-381 Challenge-Response", function () {

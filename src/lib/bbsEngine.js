@@ -139,6 +139,26 @@ export function verifyDirectBbs(issuerPublicKey, signature, messages) {
 }
 
 /**
+ * Safely converts key inputs (Uint8Array, array, hex string, serialized object) into Uint8Array
+ */
+export function ensureUint8Array(input) {
+  if (input instanceof Uint8Array) return input;
+  if (Array.isArray(input)) return new Uint8Array(input);
+  if (typeof input === 'object' && input !== null) {
+    const values = Object.values(input);
+    return new Uint8Array(values);
+  }
+  if (typeof input === 'string') {
+    const clean = input.startsWith('0x') ? input.slice(2) : input;
+    if (/^[0-9a-fA-F]+$/.test(clean) && clean.length % 2 === 0) {
+      return Uint8Array.from(clean.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+    }
+    return new TextEncoder().encode(input);
+  }
+  throw new Error("Unable to convert key input to Uint8Array");
+}
+
+/**
  * Derive Zero-Knowledge Selective Disclosure Proof:
  * Holder reveals only attributes in revealedIndices [i1, i2, ...].
  * All unrevealed attributes are hidden inside random blinding factors r1, r2, s'.
@@ -182,9 +202,10 @@ export function deriveBbsPresentationProof({
   let deviceProof = "ed25519_sim_device_sig";
   let devicePubKeyHex = "ed25519:pubkey:mock";
   if (devicePrivateKey) {
+    const cleanPrivKey = ensureUint8Array(devicePrivateKey);
     const nonceBytes = new TextEncoder().encode(`${nonce}:${verifierDid}`);
-    const sigBytes = ed25519.sign(nonceBytes, devicePrivateKey);
-    const pubBytes = ed25519.getPublicKey(devicePrivateKey);
+    const sigBytes = ed25519.sign(nonceBytes, cleanPrivKey);
+    const pubBytes = ed25519.getPublicKey(cleanPrivKey);
     deviceProof = Array.from(sigBytes).map(b => b.toString(16).padStart(2, '0')).join('');
     devicePubKeyHex = Array.from(pubBytes).map(b => b.toString(16).padStart(2, '0')).join('');
   }

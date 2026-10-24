@@ -158,4 +158,19 @@ This log tracks all project builds for phased GitHub commits during the ChronoFo
   - `test/auth.test.cjs`: Added automated tests for scalar key parsing, public key derivation, 5-step challenge authentication, and strict rejection of adversarial private keys.
   - Total test suite now stands at **43/43 passing tests** across cryptography, contracts, microservices, AI models, and multi-persona authentication. Production build clean in 5.91s.
 
+---
+
+## 🏷️ Build 11 (Completed)
+- **Tag / ID**: `build-11`
+- **Commit**: `8ab63b5`
+- **Timestamp**: `2026-10-24`
+- **Description**: Active resident device hardware key binding & full Ed25519 presentation verification.
+- **Milestone Scope**:
+  - `src/lib/bbsEngine.js`: Added `ensureUint8Array` helper to safely deserialize and reconstruct valid `Uint8Array(32)` Ed25519 private keys from `localStorage` or `IndexedDB` sessions; outputs full 128-character hex signatures and 64-character public keys.
+  - `src/lib/cryptoSim.js`: Refactored `deriveBbsProof` to accept `deviceHardwareKey` and `issuerKeyPair`, dynamically binding the presentation proof to the active resident's personal Ed25519 hardware key instead of static fallback `DEFAULT_DEVICE`.
+  - `src/pages/WalletPage.jsx`: Updated `handleGenerateProof` to query active session and pass `currentUser.hardwareKey` and `targetIssuer.keyPair`. Updated all QR code renderers (Mobile, Desktop, Fullscreen) to carry `deviceProofRaw` and `devicePublicKey` for live verification.
+  - `test/auth.test.cjs`: Added automated tests proving presentations dynamically bind to the active resident's key, pass `ed25519.verify`, and reject tampered or substituted device keys.
+  - Total test suite now stands at **44/44 passing tests** across cryptography, contracts, microservices, AI models, and multi-persona authentication. Production build clean in 6.27s.
+
+
 

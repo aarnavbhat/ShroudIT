@@ -3,7 +3,7 @@
 > **ChronoForge Hackathon — Cybersecurity Track (Cities of the Future)**  
 > *"Selective disclosure is not the new part. **Measurable privacy is.**"*
 
-[![Hardhat Test Suite](https://img.shields.io/badge/Hardhat_Tests-43%2F43_Passing-brightgreen)](file:///d:/chronoforge/test/auth.test.cjs)
+[![Hardhat Test Suite](https://img.shields.io/badge/Hardhat_Tests-44%2F44_Passing-brightgreen)](file:///d:/chronoforge/test/auth.test.cjs)
 [![BLS12-381 G1/G2 Pairing](https://img.shields.io/badge/Cryptography-BLS12--381_BBS%2B-blue)](file:///d:/chronoforge/src/lib/bbsEngine.js)
 [![DPDP Act 2023](https://img.shields.io/badge/Compliance-DPDP_Act_§6-emerald)](file:///d:/chronoforge/src/lib/walletStorage.js)
 [![Isolation Forest](https://img.shields.io/badge/AI_Engine-Isolation_Forest-purple)](file:///d:/chronoforge/src/lib/aiAnomalyEngine.js)
@@ -162,7 +162,8 @@ ShroudIT is architected specifically around the statutory mandates of the **Indi
 | **Build 7** | `build-7` | `2c67323` | Standalone Python adversary script (`scripts/adversary.py`), JS Isolation Forest AI anomaly engine, 4x4 heatmaps, and 9 auditor tests. |
 | **Build 8** | `build-8` | `64ee1af` | End-to-end integration test suite (`test/e2e.test.cjs`), judge tour navigation ribbon, offline resilience, and final hardening. |
 | **Build 9** | `build-9` | `3427bf0` | Dynamic multi-persona authentication, on-chain DID challenge verification, custom resident creation, and government issuer studio. |
-| **Build 10** | `build-10` | `[HEAD]` | Real private key BLS12-381 G2 challenge-response verification, adversarial key rejection, and live IssuerRegistry.sol accreditation check. |
+| **Build 10** | `build-10` | `2d3b25f` | Real private key BLS12-381 G2 challenge-response verification, adversarial key rejection, and live IssuerRegistry.sol accreditation check. |
+| **Build 11** | `build-11` | `8ab63b5` | Dynamic active resident device hardware key binding (Ed25519), robust Uint8Array deserialization, and full 128-hex presentation signature verification. |
 
 ---
 

@@ -41,6 +41,7 @@ export default function WalletPage() {
   const auth = useAuth();
   const currentUser = auth?.currentUser;
   const allVerifiers = auth?.allVerifiers || VERIFIERS;
+  const allIssuers = auth?.allIssuers || [];
   const userCredentials = auth?.userCredentials || CREDENTIALS;
 
   const [credentials, setCredentials] = useState(userCredentials);
@@ -107,11 +108,14 @@ export default function WalletPage() {
     setIsGenerating(true);
     setTimeout(() => {
       const nonceObj = generateNonce(currentVerifier.did);
+      const targetIssuer = allIssuers.find(i => i.did === currentCred.issuerDid) || allIssuers[0];
       const proof = deriveBbsProof({
         credential: currentCred,
         selectedPredicateIds: selectedPredicates,
         nonce: nonceObj.value,
-        verifierDid: currentVerifier.did
+        verifierDid: currentVerifier.did,
+        deviceHardwareKey: currentUser?.hardwareKey,
+        issuerKeyPair: targetIssuer?.keyPair
       });
       setActiveProof(proof);
       setIsGenerating(false);
@@ -315,8 +319,10 @@ export default function WalletPage() {
                       nonce: activeProof.nonceBinding,
                       commitment: activeProof.randomizedCommitment,
                       revealedStatements: activeProof.revealedStatements,
-                      deviceProof: activeProof.deviceBindingSignature,
-                      timestamp: activeProof.timestamp
+                      deviceProof: activeProof.deviceProofRaw || activeProof.deviceBindingSignature,
+                      devicePublicKey: activeProof.devicePublicKey,
+                      timestamp: activeProof.timestamp,
+                      rawProof: activeProof.rawProof
                     })}
                     size={150}
                     level="L"
@@ -532,8 +538,10 @@ export default function WalletPage() {
                             nonce: activeProof.nonceBinding,
                             commitment: activeProof.randomizedCommitment,
                             revealedStatements: activeProof.revealedStatements,
-                            deviceProof: activeProof.deviceBindingSignature,
-                            timestamp: activeProof.timestamp
+                            deviceProof: activeProof.deviceProofRaw || activeProof.deviceBindingSignature,
+                            devicePublicKey: activeProof.devicePublicKey,
+                            timestamp: activeProof.timestamp,
+                            rawProof: activeProof.rawProof
                           })}
                           size={165}
                           level="L"
@@ -659,8 +667,10 @@ export default function WalletPage() {
                   nonce: activeProof.nonceBinding,
                   commitment: activeProof.randomizedCommitment,
                   revealedStatements: activeProof.revealedStatements,
-                  deviceProof: activeProof.deviceBindingSignature,
-                  timestamp: activeProof.timestamp
+                  deviceProof: activeProof.deviceProofRaw || activeProof.deviceBindingSignature,
+                  devicePublicKey: activeProof.devicePublicKey,
+                  timestamp: activeProof.timestamp,
+                  rawProof: activeProof.rawProof
                 })}
                 size={260}
                 level="L"
