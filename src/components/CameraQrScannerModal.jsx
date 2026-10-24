@@ -46,11 +46,9 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
 
     const startScanner = async () => {
       try {
-        html5QrCode = new Html5Qrcode("interactive-camera-view", {
-          experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true
-          }
-        });
+        const viewEl = document.getElementById("interactive-camera-view");
+        if (viewEl) viewEl.innerHTML = "";
+        html5QrCode = new Html5Qrcode("interactive-camera-view", false);
         scannerRef.current = html5QrCode;
 
         let cameraIdOrConfig = { facingMode: "environment" };
@@ -68,9 +66,17 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
 
         setIsScanning(true);
 
-        // Full-frame scanning without restrictive qrbox cropping so tilted/off-center phone screens scan easily
+        // Optimal viewport scanning with flexible square box
         const qrConfig = {
-          fps: 20
+          fps: 15,
+          qrbox: (viewfinderWidth, viewfinderHeight) => {
+            const minDim = Math.min(viewfinderWidth, viewfinderHeight);
+            return {
+              width: Math.max(220, Math.floor(minDim * 0.85)),
+              height: Math.max(220, Math.floor(minDim * 0.85))
+            };
+          },
+          aspectRatio: 1.0
         };
 
         await html5QrCode.start(
@@ -102,8 +108,10 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
       try {
         if (scannerRef.current.isScanning) {
           scannerRef.current.stop().then(() => {
-            scannerRef.current?.clear();
+            try { scannerRef.current?.clear(); } catch(e) {}
           }).catch(() => {});
+        } else {
+          try { scannerRef.current?.clear(); } catch(e) {}
         }
       } catch (e) {}
       scannerRef.current = null;
@@ -116,11 +124,12 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
     try {
       let payload = decodedText;
       if (typeof decodedText === 'string') {
-        if (decodedText.startsWith("openid4vp://presentation?data=")) {
-          const rawJson = decodeURIComponent(decodedText.split("?data=")[1]);
+        const trimmed = decodedText.trim();
+        if (trimmed.startsWith("openid4vp://presentation?data=")) {
+          const rawJson = decodeURIComponent(trimmed.split("?data=")[1]);
           payload = JSON.parse(rawJson);
-        } else if (decodedText.startsWith("{")) {
-          payload = JSON.parse(decodedText);
+        } else if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+          payload = JSON.parse(trimmed);
         }
       }
       onScanSuccess(payload);
@@ -158,9 +167,27 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
       } catch (e) {}
     }
 
-    // Strategy 2: Multi-Scale Canvas Downsampling (essential for high-res 12MP/48MP smartphone photos)
-    // ZXing fails on 3000x4000 monitor photos; downsampling to 750px/550px/1000px naturally smooths out screen moiré!
-    const testScales = [750, 550, 1000, 1400];
+    const tempContainer = document.getElementById("interactive-camera-view-temp");
+
+    // Strategy 2: Direct scanFile fallback on raw file
+    if (tempContainer) tempContainer.innerHTML = "";
+    let rawScanner = null;
+    try {
+      rawScanner = new Html5Qrcode("interactive-camera-view-temp", false);
+      const decoded = await rawScanner.scanFile(file, false);
+      try { await rawScanner.clear(); } catch(e) {}
+      if (decoded) {
+        URL.revokeObjectURL(imgUrl);
+        return decoded;
+      }
+    } catch (e) {
+      if (rawScanner) {
+        try { await rawScanner.clear(); } catch(cErr) {}
+      }
+    }
+
+    // Strategy 3: Multi-Scale Canvas Downsampling (essential for high-res 12MP/48MP smartphone photos)
+    const testScales = [800, 600, 1100];
     for (const maxDim of testScales) {
       try {
         const canvas = document.createElement('canvas');
@@ -198,11 +225,20 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
         const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
         if (blob) {
           const scaledFile = new File([blob], `scaled_${maxDim}.jpg`, { type: 'image/jpeg' });
-          const html5Qr = new Html5Qrcode("interactive-camera-view-temp");
-          const decoded = await html5Qr.scanFile(scaledFile, false);
-          if (decoded) {
-            URL.revokeObjectURL(imgUrl);
-            return decoded;
+          if (tempContainer) tempContainer.innerHTML = "";
+          let loopScanner = null;
+          try {
+            loopScanner = new Html5Qrcode("interactive-camera-view-temp", false);
+            const decoded = await loopScanner.scanFile(scaledFile, false);
+            try { await loopScanner.clear(); } catch(e) {}
+            if (decoded) {
+              URL.revokeObjectURL(imgUrl);
+              return decoded;
+            }
+          } catch(loopErr) {
+            if (loopScanner) {
+              try { await loopScanner.clear(); } catch(cErr) {}
+            }
           }
         }
       } catch (err) {
@@ -210,18 +246,8 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
       }
     }
 
-    // Strategy 3: Direct scanFile fallback on raw file
-    try {
-      const html5Qr = new Html5Qrcode("interactive-camera-view-temp");
-      const decoded = await html5Qr.scanFile(file, false);
-      if (decoded) {
-        URL.revokeObjectURL(imgUrl);
-        return decoded;
-      }
-    } catch (e) {}
-
     URL.revokeObjectURL(imgUrl);
-    throw new Error("No QR code detected in this photo. For 100% reliable test, click '⚡ Load Active Presentation from Wallet' below!");
+    throw new Error("No QR code detected in this photo. Click '⚡ Load Active Presentation from Wallet' below!");
   };
 
   // Image file upload handler (e.g. photo taken from phone)

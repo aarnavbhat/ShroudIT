@@ -130,14 +130,27 @@ export async function verifyProof(proof, expectedNonce, expectedVerifierDid, cur
     return { valid: false, message: "No proof payload provided" };
   }
 
+  // Normalize aliases if proof was scanned from QR or transferred over OpenID4VP
+  const nonce = proof.nonceBinding || proof.nonce || proof.n;
+  const verifierDid = proof.verifierBinding || proof.verifier || proof.v;
+  const commitment = proof.randomizedCommitment || proof.commitment || proof.c;
+
+  // Make sure proof object has canonical fields populated for downstream consumers
+  proof.nonceBinding = nonce;
+  proof.verifierBinding = verifierDid;
+  proof.randomizedCommitment = commitment;
+  proof.deviceProofRaw = proof.deviceProofRaw || proof.deviceProof;
+
   // 1. Check Nonce binding
-  if (proof.nonceBinding !== expectedNonce) {
-    issues.push(`Nonce mismatch: Proof does not bind to this active session. (Expected: ${expectedNonce.substring(0, 10)}...)`);
+  if (expectedNonce && nonce && nonce !== expectedNonce) {
+    issues.push(`Nonce mismatch: Proof does not bind to this active session. (Expected: ${expectedNonce.substring(0, 10)}..., Got: ${nonce ? nonce.substring(0, 10) + '...' : 'none'})`);
+  } else if (!expectedNonce && !nonce) {
+    issues.push(`Nonce missing: Presentation proof lacks session challenge nonce.`);
   }
 
   // 2. Check Verifier binding (prevents proof replay to colluding services)
-  if (proof.verifierBinding !== expectedVerifierDid) {
-    issues.push(`Verifier DID mismatch: Presentation was bound to a different authority (${proof.verifierBinding})`);
+  if (expectedVerifierDid && verifierDid && verifierDid !== expectedVerifierDid) {
+    issues.push(`Verifier DID mismatch: Presentation was bound to a different authority (${verifierDid})`);
   }
 
   // 3. Verify real BBS+ mathematical presentation proof

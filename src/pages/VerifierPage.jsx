@@ -19,7 +19,10 @@ import {
   Terminal,
   ShieldAlert,
   Camera,
-  Upload
+  Upload,
+  Clipboard,
+  Smartphone,
+  Zap
 } from 'lucide-react';
 import { VERIFIERS, CREDENTIALS } from '../lib/mockData';
 import { useAuth } from '../lib/authContext';
@@ -44,6 +47,32 @@ export default function VerifierPage() {
   const [scanAnimationActive, setScanAnimationActive] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [consumedNonces, setConsumedNonces] = useState(() => new Set());
+  const [hasStoredWalletPresentation, setHasStoredWalletPresentation] = useState(false);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('shroudit_active_presentation');
+      setHasStoredWalletPresentation(!!stored);
+    } catch (e) {
+      setHasStoredWalletPresentation(false);
+    }
+  }, [verificationResult, scannerOpen]);
+
+  const handlePasteDirectProof = async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) {
+          handleProcessScannedPayload(text.trim());
+          return;
+        }
+      }
+    } catch (e) {}
+    const manual = window.prompt("Paste the BBS+ Presentation JSON proof copied from /wallet:");
+    if (manual && manual.trim()) {
+      handleProcessScannedPayload(manual.trim());
+    }
+  };
 
   const currentVerifier = allVerifiers.find(v => v.id === selectedVerifierId) || allVerifiers[0] || VERIFIERS[0];
 
@@ -69,7 +98,12 @@ export default function VerifierPage() {
     let proof = payload;
     if (typeof payload === 'string') {
       try {
-        proof = JSON.parse(payload);
+        if (payload.includes('?data=')) {
+          const jsonPart = decodeURIComponent(payload.split('?data=')[1]);
+          proof = JSON.parse(jsonPart);
+        } else {
+          proof = JSON.parse(payload);
+        }
       } catch (e) {
         // payload is plain string
       }
@@ -78,13 +112,22 @@ export default function VerifierPage() {
       proof = proof.presentationProof;
     }
 
+    // Normalize field names across camera, QR, clipboard, and wallet storage formats
+    if (proof && typeof proof === 'object') {
+      proof.nonceBinding = proof.nonceBinding || proof.nonce || proof.n;
+      proof.verifierBinding = proof.verifierBinding || proof.verifier || proof.v;
+      proof.randomizedCommitment = proof.randomizedCommitment || proof.commitment || proof.c;
+      proof.deviceProofRaw = proof.deviceProofRaw || proof.deviceProof || proof.deviceBindingSignature;
+      proof.issuerDid = proof.issuerDid || (proof.rawProof && proof.rawProof.issuerDid);
+    }
+
     setIsVerifying(true);
     setScanAnimationActive(true);
     setVerificationResult(null);
 
     setTimeout(async () => {
       setScanAnimationActive(false);
-      const effectiveNonce = (proof && (proof.nonceBinding || proof.nonce || proof.n)) || (activeNonce ? activeNonce.value : '0x992fa...11c');
+      const effectiveNonce = (proof && proof.nonceBinding) || (activeNonce ? activeNonce.value : '0x992fa...11c');
 
       // Check 1: Nonce expiration check (180s TTL)
       if (nonceTimeRemaining <= 0 || (activeNonce && Date.now() > activeNonce.expiresAt)) {
@@ -118,7 +161,7 @@ export default function VerifierPage() {
       }
       
       // Auto-detect target verifier if presentation was bound to a specific registered city verifier or reveals specific predicates
-      const boundVerifier = (proof && (proof.verifierBinding || proof.v));
+      const boundVerifier = proof && proof.verifierBinding;
       let matchingVerifier = boundVerifier ? allVerifiers.find(v => v.did === boundVerifier) : null;
       if (!matchingVerifier && proof && proof.revealedStatements) {
         const revealedIds = proof.revealedStatements.map(s => s.predicateId || s.id || s.label);
@@ -130,18 +173,23 @@ export default function VerifierPage() {
         setSelectedVerifierId(matchingVerifier.id);
       }
 
-      const targetCred = CREDENTIALS.find(c => (matchingVerifier || currentVerifier).allowedCredentialIds?.includes(c.id)) || CREDENTIALS[0];
+      const activeVer = matchingVerifier || currentVerifier;
+      const targetCred = CREDENTIALS.find(c => activeVer.allowedCredentialIds?.includes(c.id)) || CREDENTIALS[0];
       const proofToTest = (proof && proof.revealedStatements) ? proof : deriveBbsProof({
         credential: targetCred,
-        selectedPredicateIds: (matchingVerifier || currentVerifier).requiredPredicates,
+        selectedPredicateIds: activeVer.requiredPredicates,
         nonce: effectiveNonce,
-        verifierDid: (matchingVerifier || currentVerifier).did
+        verifierDid: activeVer.did
       });
+
+      // Ensure normalized bindings on proofToTest
+      proofToTest.nonceBinding = proofToTest.nonceBinding || effectiveNonce;
+      proofToTest.verifierBinding = proofToTest.verifierBinding || boundVerifier || activeVer.did;
 
       const res = await verifyProof(
         proofToTest,
         effectiveNonce,
-        boundVerifier || currentVerifier.did,
+        boundVerifier || activeVer.did,
         142
       );
 
@@ -154,7 +202,7 @@ export default function VerifierPage() {
         proofTested: proofToTest
       });
       setIsVerifying(false);
-    }, 600);
+    }, 400);
   };
 
   const handleRunVerification = () => {
@@ -166,7 +214,15 @@ export default function VerifierPage() {
       }
     } catch (e) {}
 
-    const presentationNonce = storedPresentation ? (storedPresentation.nonceBinding || storedPresentation.nonce) : null;
+    if (storedPresentation && typeof storedPresentation === 'object') {
+      storedPresentation.nonceBinding = storedPresentation.nonceBinding || storedPresentation.nonce || storedPresentation.n;
+      storedPresentation.verifierBinding = storedPresentation.verifierBinding || storedPresentation.verifier || storedPresentation.v;
+      storedPresentation.randomizedCommitment = storedPresentation.randomizedCommitment || storedPresentation.commitment || storedPresentation.c;
+      storedPresentation.deviceProofRaw = storedPresentation.deviceProofRaw || storedPresentation.deviceProof || storedPresentation.deviceBindingSignature;
+      storedPresentation.issuerDid = storedPresentation.issuerDid || (storedPresentation.rawProof && storedPresentation.rawProof.issuerDid);
+    }
+
+    const presentationNonce = storedPresentation ? storedPresentation.nonceBinding : null;
     const effectiveNonce = presentationNonce || (activeNonce ? activeNonce.value : '0x992fa...11c');
 
     // Check 1: Nonce expiration check (180s TTL)
@@ -206,7 +262,7 @@ export default function VerifierPage() {
       setScanAnimationActive(false);
 
       // Auto-detect target verifier from stored presentation binding or disclosed predicates
-      const boundVerifier = (storedPresentation && (storedPresentation.verifierBinding || storedPresentation.v));
+      const boundVerifier = (storedPresentation && storedPresentation.verifierBinding);
       let matchingVerifier = boundVerifier ? allVerifiers.find(v => v.did === boundVerifier) : null;
       if (!matchingVerifier && storedPresentation && storedPresentation.revealedStatements) {
         const revealedIds = storedPresentation.revealedStatements.map(s => s.predicateId || s.id || s.label);
@@ -229,6 +285,9 @@ export default function VerifierPage() {
             verifierDid: activeVer.did
           });
 
+      proofToTest.nonceBinding = proofToTest.nonceBinding || effectiveNonce;
+      proofToTest.verifierBinding = proofToTest.verifierBinding || boundVerifier || activeVer.did;
+
       const res = await verifyProof(
         proofToTest,
         effectiveNonce,
@@ -245,7 +304,7 @@ export default function VerifierPage() {
         proofTested: proofToTest
       });
       setIsVerifying(false);
-    }, 750);
+    }, 400);
   };
 
   return (
@@ -424,18 +483,26 @@ export default function VerifierPage() {
                 <p className="text-xs text-slate-300 font-medium">
                   {isVerifying ? 'Ingesting presentation and validating cryptographic pairings...' : 'Ready for Resident Wallet Tap or QR Scan'}
                 </p>
-                <p className="text-[10px] text-slate-500 font-mono">
-                  Protocols: OpenID4VP • BBS+ Selective Disclosure • Nonce Bound
-                </p>
+                <div className="flex items-center justify-center space-x-2 pt-0.5">
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    OpenID4VP • BBS+ Selective Disclosure • Nonce Bound
+                  </span>
+                  {hasStoredWalletPresentation && (
+                    <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-700 font-bold flex items-center space-x-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+                      <span>Wallet Active</span>
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Action Triggers: Camera Scanner & Simulated NFC Tap */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Action Triggers: Camera Scanner, Ingest Active, Clipboard Paste & Simulated Tap */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <button
                 onClick={() => setScannerOpen(true)}
                 disabled={isVerifying || !currentVerifier.isRegistered}
-                className="py-3.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-cyan-500/20 hover:brightness-110 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
+                className="py-3 px-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-cyan-500/20 hover:brightness-110 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
               >
                 <Camera className="w-4 h-4" />
                 <span>Scan QR (Camera/File)</span>
@@ -444,7 +511,8 @@ export default function VerifierPage() {
               <button
                 onClick={handleRunVerification}
                 disabled={isVerifying || !currentVerifier.isRegistered}
-                className="py-3.5 px-4 rounded-xl bg-slate-900 border border-slate-700 text-slate-200 hover:text-white hover:border-cyan-500 font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
+                className="py-3 px-3.5 rounded-xl bg-gradient-to-r from-teal-500/20 to-cyan-500/20 border border-cyan-500/50 text-cyan-300 hover:text-white hover:border-cyan-400 font-extrabold text-xs uppercase tracking-wider transition-all flex items-center justify-center space-x-2 disabled:opacity-50 shadow-sm"
+                title="Directly verify the active presentation proof from Resident Wallet"
               >
                 {isVerifying ? (
                   <>
@@ -453,10 +521,29 @@ export default function VerifierPage() {
                   </>
                 ) : (
                   <>
-                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                    <span>Simulate Fast Tap</span>
+                    <Zap className="w-4 h-4 text-cyan-400 fill-cyan-400" />
+                    <span>⚡ Ingest Active from Wallet</span>
                   </>
                 )}
+              </button>
+
+              <button
+                onClick={handlePasteDirectProof}
+                disabled={isVerifying || !currentVerifier.isRegistered}
+                className="py-2.5 px-3 rounded-xl bg-slate-900 border border-slate-700 hover:border-cyan-500 text-slate-300 hover:text-white text-xs font-semibold flex items-center justify-center space-x-1.5 transition-colors"
+                title="Paste proof payload from clipboard"
+              >
+                <Clipboard className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Paste Proof from Clipboard</span>
+              </button>
+
+              <button
+                onClick={handleRunVerification}
+                disabled={isVerifying || !currentVerifier.isRegistered}
+                className="py-2.5 px-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200 text-xs font-semibold flex items-center justify-center space-x-1.5 transition-colors"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Simulate Turnstile NFC Tap</span>
               </button>
             </div>
 

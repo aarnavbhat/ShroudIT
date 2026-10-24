@@ -183,13 +183,22 @@ export default function WalletPage() {
     const base = {
       protocol: "openid4vp",
       proofId: proof.proofId,
-      verifier: proof.verifierBinding,
-      nonce: proof.nonceBinding,
-      commitment: proof.randomizedCommitment,
+      // Canonical keys expected by verifyProof & OpenID4VP
+      nonceBinding: proof.nonceBinding,
+      verifierBinding: proof.verifierBinding,
+      randomizedCommitment: proof.randomizedCommitment,
       revealedStatements: proof.revealedStatements,
-      deviceProof: proof.deviceProofRaw || proof.deviceBindingSignature,
+      deviceProofRaw: proof.deviceProofRaw || proof.deviceBindingSignature,
       devicePublicKey: proof.devicePublicKey,
-      timestamp: proof.timestamp
+      timestamp: proof.timestamp,
+      issuerDid: proof.issuerDid,
+      issuer: proof.issuer,
+      credentialSchema: proof.credentialSchema,
+      // Aliased short keys for universal scanner compatibility
+      nonce: proof.nonceBinding,
+      verifier: proof.verifierBinding,
+      commitment: proof.randomizedCommitment,
+      deviceProof: proof.deviceProofRaw || proof.deviceBindingSignature
     };
     if (mode === 'full' && proof.rawProof) {
       base.rawProof = proof.rawProof;
@@ -226,6 +235,18 @@ export default function WalletPage() {
       if (storedReceipts && storedReceipts.length > 0) {
         setReceipts(storedReceipts);
       }
+
+      // Restore active presentation if present in localStorage
+      try {
+        const storedActive = localStorage.getItem('shroudit_active_presentation');
+        if (storedActive) {
+          const parsed = JSON.parse(storedActive);
+          if (parsed && (parsed.revealedStatements || parsed.nonceBinding || parsed.proofId)) {
+            setActiveProof(parsed);
+          }
+        }
+      } catch (e) {}
+
       setStorageInitialized(true);
     }
     loadWalletStorage();
@@ -316,7 +337,8 @@ export default function WalletPage() {
 
   const handleCopyProof = () => {
     if (activeProof) {
-      navigator.clipboard.writeText(JSON.stringify(activeProof, null, 2));
+      const payloadStr = getQrPayloadString(activeProof, qrMode);
+      navigator.clipboard.writeText(payloadStr);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -893,6 +915,18 @@ export default function WalletPage() {
                   >
                     🔒 Full Proof
                   </button>
+                  <button
+                    onClick={handleCopyProof}
+                    className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 hover:text-white"
+                  >
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                  <button
+                    onClick={() => navigate('/verifier')}
+                    className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800"
+                  >
+                    Verifier →
+                  </button>
                 </div>
                 <p className="text-[10px] text-emerald-400 font-mono">0 Bytes PII Leaked • Fresh Proof</p>
               </div>
@@ -1113,6 +1147,14 @@ export default function WalletPage() {
                         >
                           <Copy className="w-3 h-3" />
                           <span>{copied ? 'Copied!' : 'Copy'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => navigate('/verifier')}
+                          className="text-[11px] px-2.5 py-1 rounded bg-cyan-950 text-cyan-300 border border-cyan-700/60 hover:bg-cyan-900/80 flex items-center space-x-1 font-mono transition-colors"
+                          title="Open City Service Verifier Turnstile to scan or tap"
+                        >
+                          <span>Open Verifier →</span>
                         </button>
                       </div>
                     </div>
