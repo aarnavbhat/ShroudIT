@@ -29,6 +29,7 @@ import ConsentExplainerModal from '../components/ConsentExplainerModal';
 import { CREDENTIALS, VERIFIERS, INITIAL_CONSENT_RECEIPTS } from '../lib/mockData';
 import { useAuth } from '../lib/authContext';
 import { deriveBbsProof, generateNonce } from '../lib/cryptoSim';
+import { evaluatePurposeFirewall } from '../lib/firewallEngine';
 import { 
   initWalletStorage, 
   getStoredCredentials, 
@@ -58,6 +59,7 @@ export default function WalletPage() {
   const [explainerOpen, setExplainerOpen] = useState(false);
   const [explainerCred, setExplainerCred] = useState(userCredentials[0] || CREDENTIALS[0]);
   const [overAskingTriggered, setOverAskingTriggered] = useState(false);
+  const [firewallAudit, setFirewallAudit] = useState(null);
   const [receipts, setReceipts] = useState(INITIAL_CONSENT_RECEIPTS);
   const [copied, setCopied] = useState(false);
   const [storageInitialized, setStorageInitialized] = useState(false);
@@ -142,6 +144,19 @@ export default function WalletPage() {
   };
 
   const handleSimulateOverAsking = () => {
+    const rogueVerifierRequest = {
+      verifierDid: "did:shroud:rogue-unregistered-wifi-kiosk",
+      verifierName: "Municipal Public Wi-Fi Portal (Unregistered)",
+      purpose: "Public Internet Access at Central Majestic Station",
+      demandedFields: [
+        "National Aadhaar Number (UIDAI)",
+        "Raw Date of Birth (YYYY-MM-DD)",
+        "Mobile Phone Number (Primary)",
+        "Permanent Residential Street Address"
+      ]
+    };
+    const audit = evaluatePurposeFirewall(rogueVerifierRequest, currentCred);
+    setFirewallAudit(audit);
     setOverAskingTriggered(true);
   };
 
@@ -201,35 +216,64 @@ export default function WalletPage() {
         </div>
       </div>
 
-      {/* Over-Asking Warning Banner */}
-      {overAskingTriggered && (
-        <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-600/60 text-rose-200 animate-fadeIn">
+      {/* Over-Asking Warning Banner (Dynamic Programmatic Firewall Audit) */}
+      {overAskingTriggered && firewallAudit && (
+        <div className="p-5 rounded-2xl bg-rose-950/40 border border-rose-600/60 text-rose-200 animate-fadeIn space-y-3">
           <div className="flex items-start justify-between">
             <div className="flex items-start space-x-3">
-              <div className="p-2 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-400 shrink-0">
+              <div className="p-2.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-400 shrink-0">
                 <AlertTriangle className="w-5 h-5" />
               </div>
               <div>
-                <div className="flex items-center space-x-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <h4 className="text-sm font-bold text-white">ShroudIT Purpose Firewall: Request Intercepted & Blocked</h4>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-rose-900/80 text-rose-300 border border-rose-700 font-mono">
-                    DPDP Act §6 Violation
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-rose-900/80 text-rose-200 border border-rose-700 font-mono">
+                    {firewallAudit.statutoryProvision.split('—')[0].trim()}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-red-950 text-red-400 border border-red-800 font-mono font-bold">
+                    SEVERITY: {firewallAudit.severity}
                   </span>
                 </div>
-                <p className="text-xs text-rose-200/90 mt-1">
-                  Target: <span className="font-mono text-white">Suspicious Public WiFi Portal (did:cv:rogue-unregistered-wifi-kiosk)</span>
+                <p className="text-xs text-rose-200/90 mt-1.5">
+                  Rogue Relying Party: <span className="font-mono text-white font-bold">{firewallAudit.verifierName}</span> ({firewallAudit.verifierDid})
                 </p>
-                <p className="text-xs text-rose-300/80 mt-1 leading-relaxed">
-                  Violation: The verifier demanded your <strong className="text-rose-100">Full Aadhaar, Date of Birth, and Mobile Phone</strong> for basic WiFi access. This violates statutory data minimization. ShroudIT blocked this request. Zero data sent.
+                <p className="text-xs text-rose-200/80 mt-1">
+                  Stated Purpose: <span className="italic text-slate-300">"{firewallAudit.purposeStatement}"</span>
                 </p>
               </div>
             </div>
             <button
-              onClick={() => setOverAskingTriggered(false)}
-              className="text-xs text-rose-400 hover:text-white px-2 py-1 font-semibold"
+              onClick={() => { setOverAskingTriggered(false); setFirewallAudit(null); }}
+              className="text-xs text-rose-400 hover:text-white px-2.5 py-1 font-semibold rounded bg-rose-950/60 border border-rose-800"
             >
               Dismiss
             </button>
+          </div>
+
+          <div className="p-3 rounded-xl bg-black/60 border border-rose-900/50 space-y-2 text-xs">
+            <div className="flex items-center space-x-2 text-rose-300 font-semibold">
+              <EyeOff className="w-4 h-4 text-rose-400" />
+              <span>Statutory Over-Asking Violations Detected ({firewallAudit.prohibitedFieldsCount} forbidden fields demanded):</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pl-6">
+              {firewallAudit.violatingDemands.map((demand, idx) => (
+                <div key={idx} className="font-mono text-[11px] text-rose-200 flex items-center space-x-1.5">
+                  <span className="text-rose-400 font-bold">✕</span>
+                  <span>{demand}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] pt-2 border-t border-rose-900/50 text-rose-300 font-mono gap-2">
+            <div>
+              <span className="text-slate-400">Enclave Action: </span>
+              <strong className="text-white">Zero Bytes Transmitted</strong> (Execution Halted)
+            </div>
+            <div>
+              <span className="text-slate-400">Safe Alternative: </span>
+              <span className="text-cyan-300 font-bold">{firewallAudit.safeAlternative}</span>
+            </div>
           </div>
         </div>
       )}

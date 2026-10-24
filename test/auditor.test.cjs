@@ -108,6 +108,19 @@ describe("ShroudIT AI Linkability Auditor & Anomaly Engine", function () {
       expect(evaluation.isAnomaly).to.be.false;
       expect(evaluation.riskLevel).to.equal("LOW");
     });
+
+    it("should dynamically evaluate anomalies across configurable decision thresholds (Detail 4A)", function () {
+      const vector = [140.0, 1.0, 4.0, 1.0, 0.95];
+      // With strict low threshold 0.50
+      const sensitiveEval = aiEngine.evaluateTelemetryVector(vector, 0.50);
+      expect(sensitiveEval.threshold).to.equal(0.50);
+      expect(sensitiveEval.isAnomaly).to.be.true;
+
+      // With very high threshold 0.99
+      const lenientEval = aiEngine.evaluateTelemetryVector(vector, 0.99);
+      expect(lenientEval.threshold).to.equal(0.99);
+      expect(lenientEval.isAnomaly).to.be.false;
+    });
   });
 
   describe("2. Bipartite Cross-Service Linkability Simulation", function () {
@@ -135,6 +148,28 @@ describe("ShroudIT AI Linkability Auditor & Anomaly Engine", function () {
       // ShroudIT has 0.0 cross-service correlation
       expect(sim.shroudit.correlationMatrix[0][1]).to.equal(0.0);
     });
+
+    it("should derive genuine BLS12-381 curve points and distinct commitments per service (Detail 4B)", function () {
+      const sim = aiEngine.simulateCrossServiceLinkability({ numResidents: 3, numServices: 3 });
+
+      // Verify ShroudIT presentations carry real BLS12-381 G1 curve points (96 hex chars)
+      expect(sim.shroudit.events[0]).to.have.property("curvePointAPrime");
+      expect(sim.shroudit.events[0].curvePointAPrime).to.have.lengthOf(96);
+      expect(sim.shroudit.events[0]).to.have.property("commitmentC");
+      expect(sim.shroudit.events[0].commitmentC).to.have.lengthOf(96);
+
+      // Verify that the same resident visiting service 0 and service 1 generates distinct blinding points
+      const ev0 = sim.shroudit.events[0]; // Resident 0 at Service 0
+      const ev1 = sim.shroudit.events[1]; // Resident 0 at Service 1
+      expect(ev0.curvePointAPrime).to.not.equal(ev1.curvePointAPrime);
+      expect(ev0.commitmentC).to.not.equal(ev1.commitmentC);
+
+      // Contrast with baseline: Resident 0 at Service 0 and Service 1 has identical signature
+      const baseEv0 = sim.baseline.events[0];
+      const baseEv1 = sim.baseline.events[1];
+      expect(baseEv0.signatureHash).to.equal(baseEv1.signatureHash);
+      expect(baseEv0.pseudonym).to.equal(baseEv1.pseudonym);
+    });
   });
 
   describe("3. Backend Auditor API Endpoints", function () {
@@ -158,6 +193,17 @@ describe("ShroudIT AI Linkability Auditor & Anomaly Engine", function () {
       expect(res.body).to.have.property("score");
       expect(res.body).to.have.property("isAnomaly");
       expect(res.body.score).to.be.at.least(0.60);
+    });
+
+    it("POST /api/auditor/anomaly-detect should support custom threshold parameters", async function () {
+      const res = await makeRequest("POST", "/api/auditor/anomaly-detect", {
+        vector: [120.0, 1.0, 5.0, 1.0, 0.9],
+        threshold: 0.99
+      });
+
+      expect(res.status).to.equal(200);
+      expect(res.body.threshold).to.equal(0.99);
+      expect(res.body.isAnomaly).to.equal(false);
     });
 
     it("GET /api/auditor/telemetry should return live event stream with anomaly flags", async function () {

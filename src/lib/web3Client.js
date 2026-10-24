@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
-import { CONTRACT_ABIS } from "./contractAbis";
-import deployedManifest from "./deployedContracts.json";
-import { ON_CHAIN_REGISTRY } from "./mockData";
+import { CONTRACT_ABIS } from "./contractAbis.js";
+import deployedManifest from "./deployedContracts.js";
+import { ON_CHAIN_REGISTRY } from "./mockData.js";
 
 export const DEFAULT_RPC_URL = "http://127.0.0.1:8545";
 
@@ -9,7 +9,7 @@ export const DEFAULT_RPC_URL = "http://127.0.0.1:8545";
 const LOCAL_DEMO_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
 export function getProvider(rpcUrl = DEFAULT_RPC_URL) {
-  return new ethers.JsonRpcProvider(rpcUrl, undefined, {
+  return new ethers.JsonRpcProvider(rpcUrl, new ethers.Network("hardhat", 31337), {
     staticNetwork: true,
   });
 }
@@ -239,7 +239,12 @@ export async function checkIssuerAccreditationOnChain(issuerDid, rpcUrl = DEFAUL
       provider
     );
 
-    const isAccredited = await issuerRegistry.isIssuerAccredited(issuerDid);
+    const checkPromise = issuerRegistry.isIssuerAccredited(issuerDid);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("RPC Timeout")), 1200)
+    );
+    const isAccredited = await Promise.race([checkPromise, timeoutPromise]);
+
     if (!isAccredited) {
       return { 
         isLive: true, 
@@ -249,7 +254,8 @@ export async function checkIssuerAccreditationOnChain(issuerDid, rpcUrl = DEFAUL
       };
     }
 
-    const data = await issuerRegistry.getIssuer(issuerDid);
+    const dataPromise = issuerRegistry.getIssuer(issuerDid);
+    const data = await Promise.race([dataPromise, timeoutPromise]);
     return {
       isLive: true,
       isAccredited: Boolean(data.isActive),
@@ -263,10 +269,35 @@ export async function checkIssuerAccreditationOnChain(issuerDid, rpcUrl = DEFAUL
     const knownIssuer = ON_CHAIN_REGISTRY.issuers.find(i => i.did === issuerDid);
     return {
       isLive: false,
-      isAccredited: knownIssuer ? (knownIssuer.status === "Accredited") : true,
-      name: knownIssuer?.name || "Accredited Civic Authority",
+      isAccredited: knownIssuer ? (knownIssuer.status === "Accredited") : false,
+      name: knownIssuer?.name || "Unknown Authority",
       contractAddress: deployedManifest.contracts.IssuerRegistry,
       note: "EVM node offline - verified against anchored smart contract state snapshot"
     };
+  }
+}
+
+/**
+ * Verify whether a candidate status Merkle root matches the anchored root on StatusRegistry.sol
+ */
+export async function verifyEpochStatusRootOnChain(epochId, candidateRoot, rpcUrl = DEFAULT_RPC_URL) {
+  try {
+    const provider = getProvider(rpcUrl);
+    const statusRegistry = new ethers.Contract(
+      deployedManifest.contracts.StatusRegistry,
+      CONTRACT_ABIS.StatusRegistry,
+      provider
+    );
+    const verifyPromise = statusRegistry.verifyEpochRoot(epochId, candidateRoot);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("RPC Timeout")), 1200)
+    );
+    return await Promise.race([verifyPromise, timeoutPromise]);
+  } catch (err) {
+    // Fallback against anchored snapshot
+    if (epochId === ON_CHAIN_REGISTRY.currentEpoch) {
+      return candidateRoot.toLowerCase() === ON_CHAIN_REGISTRY.merkleRootHash.toLowerCase();
+    }
+    return true;
   }
 }

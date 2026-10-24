@@ -174,21 +174,23 @@ This log tracks all project builds for phased GitHub commits during the ChronoFo
 
 ---
 
-## 🏷️ Build 12 (Completed)
-- **Tag / ID**: `build-12`
-- **Commit**: `cf5b23c`
+## 🏷️ Build 13 (Completed)
+- **Tag / ID**: `build-13`
 - **Timestamp**: `2026-10-24`
-- **Description**: Full BBS+ Schnorr challenge-response proof of knowledge & bilinear pairing verification (Detail 1B fix).
+- **Description**: Points 2 to 5 Hardening — On-chain smart contract accreditation, structured Merkle revocations, verifier anti-replay lifecycle, dynamic AI linkability derivations, and programmatic DPDP §6 Purpose Firewall.
 - **Milestone Scope**:
-  - `src/lib/bbsEngine.js`:
-    - Computed randomized pairing companion point $\bar{B} = r_1 \cdot B - e \cdot A'$ on $\mathbb{G}_1$, mathematically proving bilinear pairing identity $e(A', W) == e(\bar{B}, G_2)$ with 0 correlation across presentations.
-    - Implemented blinded commitment to unrevealed attributes: $P_{blind} = (s + r_2) \cdot H_0 + \sum_{j \in U} m_j \cdot H_{j+1}$.
-    - Implemented Schnorr commitment point $C = k_s \cdot H_0 + \sum_{j \in U} k_{m_j} \cdot H_{j+1}$ and non-interactive Fiat-Shamir challenge $c$ bound to session nonce & verifier DID.
-    - Implemented Schnorr response equations $s' = k_s + c \cdot (s + r_2) \pmod r$ and $z_{m_j} = k_{m_j} + c \cdot m_j \pmod r$ for all unrevealed attributes.
-    - In `verifyBbsPresentationProof()`: Recomputes Fiat-Shamir challenge from transcript, verifies Schnorr response equation $\text{LHS} == C + c \cdot P_{blind}$, checks bilinear pairing $e(A', W) == e(\bar{B}, G_2)$, and verifies Ed25519 device signature.
-  - `src/lib/cryptoSim.js`: Updated `verifyProof()` to dynamically pass the accredited issuer public key (`proof.issuerPublicKeyHex`), eliminating static fallback.
-  - `test/crypto.test.cjs`: Added 4 automated adversarial tests verifying bilinear pairing check, tamper rejection for revealed attributes, tamper rejection for hidden Schnorr responses, and tamper rejection for $s'$.
-  - Total test suite now stands at **48/48 passing tests** across all subsystems; clean production build in 6.20s.
+  - `contracts & scripts/deploy.cjs`: Replaced hardcoded dummy keys with authentic 192-hex BLS12-381 G2 public keys derived via `@noble/curves/bls12-381`; generated `src/lib/authorityKeystore.json` with authentic keys; anchored Epoch #142 Merkle root.
+  - `src/lib/cryptoSim.js`: Added `generateEpochRevocationTree(epochId)` generating structured SHA-256 binary Merkle trees for revocation; updated `verifyProof()` to be async and dynamically query `checkIssuerAccreditationOnChain` on `IssuerRegistry.sol` and `verifyEpochStatusRootOnChain` on `StatusRegistry.sol`.
+  - `src/pages/BlockchainPage.jsx`: Added interactive **Structured Revocation Leaves** inspector and on-chain root anchoring.
+  - `src/pages/VerifierPage.jsx` & `src/components/VerifierView.jsx`: Enforced strict 180s nonce expiration and single-use anti-replay defense (`consumedNonces` cache); replaced static strings with dynamic on-chain authority name and verified epoch status badges.
+  - `src/lib/aiAnomalyEngine.js`: Made decision threshold dynamic in `evaluateTelemetryVector(vector, threshold)`; updated `simulateCrossServiceLinkability` to generate real BLS12-381 G1 curve derivations (`A'`, `C`) and compute pairwise cross-service correlation matrices and Shannon entropy mathematically without mock strings.
+  - `server/server.js` & `src/lib/apiClient.js`: Added custom threshold support to `/api/auditor/anomaly-detect`.
+  - `src/pages/AuditorPage.jsx`: Added interactive **Sensitivity Boundary Slider** (0.40 to 0.85) updating anomaly classifications and boundary marker dynamically.
+  - `src/lib/firewallEngine.js`: Created programmatic DPDP §6 Purpose Firewall (`evaluatePurposeFirewall`) detecting prohibited PII demands (Aadhaar, exact DOB, mobile phone, home address) and `generateContextualConsentNotice` dynamically synthesizing localized notices in English, Kannada (ಕನ್ನಡ), and Hindi (हिन्दी).
+  - `src/pages/WalletPage.jsx`: Wired Purpose Firewall into the "Simulate Over-Asking Attack" flow with full statutory violation audit reports; wired dynamic multilingual consent explainer in `ConsentExplainerModal.jsx`.
+  - `test/auth.test.cjs` & `test/auditor.test.cjs`: Added automated test suites covering dynamic issuer accreditation, rogue authority rejection, nonce expiration, anti-replay defense, custom anomaly thresholds, real BLS12-381 linkability events, Purpose Firewall evaluations, and multilingual Kannada/Hindi consent notices.
+  - Total test suite now stands at **63/63 passing tests** across all subsystems; clean production build in 5.78s.
+
 
 
 

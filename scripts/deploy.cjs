@@ -39,52 +39,74 @@ async function main() {
   console.log(`✓ DocumentVerifier deployed to:${documentVerifierAddress}`);
 
   // Seed initial civic issuers (Center for e-Governance, BMTC, Social Welfare, KDEM)
-  console.log("\nSeeding Accredited Civic Authorities...");
+  console.log("\nSeeding Accredited Civic Authorities with Authentic BLS12-381 G2 Public Keys...");
+
+  const { bls12_381 } = await import("@noble/curves/bls12-381.js");
+  const { sha256 } = await import("@noble/hashes/sha2.js");
+  const Fr = bls12_381.fields.Fr;
+
+  function deriveAuthorityKey(seed) {
+    const hash = sha256(new TextEncoder().encode(seed));
+    let num = 0n;
+    for (let i = 0; i < hash.length; i++) {
+      num = (num << 8n) + BigInt(hash[i]);
+    }
+    const privScalar = Fr.create(num);
+    const pubPoint = bls12_381.G2.Point.BASE.multiply(privScalar);
+    return {
+      privateKeyHex: "0x" + privScalar.toString(16).padStart(64, "0"),
+      publicKeyHex: "0x" + pubPoint.toHex()
+    };
+  }
 
   const CEG_DID = "did:shroud:gov-karnataka-ceg";
   const BMTC_DID = "did:shroud:bmtc-transit";
   const DSW_DID = "did:shroud:karnataka-dsw";
   const KDEM_DID = "did:shroud:kdem-cert";
 
-  const DUMMY_BLS_KEY_CEG = "0x04e8b394f99a128e4091ab7721cd882194f10928e4912984019284091823901928409128";
-  const DUMMY_BLS_KEY_BMTC = "0x03a74b92184c98e21940192849120938401928401928409128409128409128409128";
+  const CEG_KEYS = deriveAuthorityKey("ShroudIT:Authority:gov-karnataka-ceg:v1");
+  const BMTC_KEYS = deriveAuthorityKey("ShroudIT:Authority:bmtc-transit:v1");
+  const DSW_KEYS = deriveAuthorityKey("ShroudIT:Authority:karnataka-dsw:v1");
+  const KDEM_KEYS = deriveAuthorityKey("ShroudIT:Authority:kdem-cert:v1");
 
   await issuerRegistry.registerIssuer(
     CEG_DID,
     "Center for e-Governance, Karnataka",
-    DUMMY_BLS_KEY_CEG,
+    CEG_KEYS.publicKeyHex,
     [ethers.id("ResidentIdentity_v2"), ethers.id("AddressCredential_v1")]
   );
-  console.log(`  ✓ Registered: Center for e-Governance (${CEG_DID})`);
+  console.log(`  ✓ Registered: Center for e-Governance (${CEG_DID}) [BLS12-381 G2 PK: ${CEG_KEYS.publicKeyHex.substring(0, 18)}...]`);
 
   await issuerRegistry.registerIssuer(
     BMTC_DID,
     "BMTC Transit Authority",
-    DUMMY_BLS_KEY_BMTC,
+    BMTC_KEYS.publicKeyHex,
     [ethers.id("StudentTransitPass_v3")]
   );
-  console.log(`  ✓ Registered: BMTC Transit (${BMTC_DID})`);
+  console.log(`  ✓ Registered: BMTC Transit (${BMTC_DID}) [BLS12-381 G2 PK: ${BMTC_KEYS.publicKeyHex.substring(0, 18)}...]`);
 
   await issuerRegistry.registerIssuer(
     DSW_DID,
     "Directorate of Social Welfare",
-    DUMMY_BLS_KEY_CEG,
+    DSW_KEYS.publicKeyHex,
     [ethers.id("SocioEconomicBenefit_v2")]
   );
-  console.log(`  ✓ Registered: Dept of Social Welfare (${DSW_DID})`);
+  console.log(`  ✓ Registered: Dept of Social Welfare (${DSW_DID}) [BLS12-381 G2 PK: ${DSW_KEYS.publicKeyHex.substring(0, 18)}...]`);
 
   await issuerRegistry.registerIssuer(
     KDEM_DID,
     "Karnataka Digital Economy Mission",
-    DUMMY_BLS_KEY_BMTC,
+    KDEM_KEYS.publicKeyHex,
     [ethers.id("ProfessionalSkillCert_v1")]
   );
-  console.log(`  ✓ Registered: KDEM Academy (${KDEM_DID})`);
+  console.log(`  ✓ Registered: KDEM Academy (${KDEM_DID}) [BLS12-381 G2 PK: ${KDEM_KEYS.publicKeyHex.substring(0, 18)}...]`);
 
   // Anchor Initial Epoch #142 Merkle Status Root
   console.log("\nAnchoring Initial Epoch #142 Merkle Revocation Root...");
-  const EPOCH_142_ROOT = "0x9bf41a67d028b1e4c398e09f58cb2142e88f7c9e0a2948719280efca117a4c9b";
-  await statusRegistry.anchorEpochStatusRoot(142, EPOCH_142_ROOT, 4080, 16);
+  const { generateEpochRevocationTree } = await import("../src/lib/cryptoSim.js");
+  const epoch142Data = generateEpochRevocationTree(142);
+  const EPOCH_142_ROOT = epoch142Data.root;
+  await statusRegistry.anchorEpochStatusRoot(142, EPOCH_142_ROOT, 4080, epoch142Data.leafCount);
   console.log(`  ✓ Anchored Epoch #142 Root: ${EPOCH_142_ROOT}`);
 
   // Log Initial Batches
@@ -119,6 +141,34 @@ async function main() {
   const outputPath = path.join(__dirname, "../src/lib/deployedContracts.json");
   fs.writeFileSync(outputPath, JSON.stringify(manifest, null, 2));
   console.log(`\n✓ Contract manifest saved to: ${outputPath}`);
+
+  // Save authentic authority keystore matching on-chain registrations
+  const authorityKeystore = {
+    [CEG_DID]: {
+      name: "Center for e-Governance, Karnataka",
+      did: CEG_DID,
+      keyPair: CEG_KEYS
+    },
+    [BMTC_DID]: {
+      name: "BMTC Transit Authority",
+      did: BMTC_DID,
+      keyPair: BMTC_KEYS
+    },
+    [DSW_DID]: {
+      name: "Directorate of Social Welfare",
+      did: DSW_DID,
+      keyPair: DSW_KEYS
+    },
+    [KDEM_DID]: {
+      name: "Karnataka Digital Economy Mission",
+      did: KDEM_DID,
+      keyPair: KDEM_KEYS
+    }
+  };
+
+  const keystorePath = path.join(__dirname, "../src/lib/authorityKeystore.json");
+  fs.writeFileSync(keystorePath, JSON.stringify(authorityKeystore, null, 2));
+  console.log(`✓ Authority keystore saved to: ${keystorePath}`);
   console.log("==================================================");
   console.log("Deployment Complete!");
 }

@@ -40,7 +40,8 @@ export default function AuditorPage() {
   const [probeNonceAge, setProbeNonceAge] = useState(15);
   const [probeIsUnregistered, setProbeIsUnregistered] = useState(false);
   const [probeBurstScore, setProbeBurstScore] = useState(0.1);
-  const [probeResult, setProbeResult] = useState(() => evaluateTelemetryVector([8, 2, 15, 0, 0.1]));
+  const [decisionThreshold, setDecisionThreshold] = useState(0.60);
+  const [probeResult, setProbeResult] = useState(() => evaluateTelemetryVector([8, 2, 15, 0, 0.1], 0.60));
 
   const handleRunSim = async () => {
     setIsSimulating(true);
@@ -74,17 +75,17 @@ export default function AuditorPage() {
       Number(probeBurstScore)
     ];
 
-    const apiEval = await fetchAnomalyInference(vector);
+    const apiEval = await fetchAnomalyInference(vector, decisionThreshold);
     if (apiEval && apiEval.score !== undefined) {
       setProbeResult(apiEval);
     } else {
-      setProbeResult(evaluateTelemetryVector(vector));
+      setProbeResult(evaluateTelemetryVector(vector, decisionThreshold));
     }
   };
 
   useEffect(() => {
     handleEvaluateProbe();
-  }, [probeReqFreq, probeAttrsCount, probeNonceAge, probeIsUnregistered, probeBurstScore]);
+  }, [probeReqFreq, probeAttrsCount, probeNonceAge, probeIsUnregistered, probeBurstScore, decisionThreshold]);
 
   const serviceLabels = ["Metro Gate", "Central Lib", "Yuva Nidhi", "City Clinic"];
 
@@ -319,9 +320,28 @@ export default function AuditorPage() {
               </p>
             </div>
           </div>
-          <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800">
-            Threshold: 0.60
-          </span>
+          <div className="flex items-center space-x-3">
+            <div className="text-right hidden sm:block">
+              <span className="text-[10px] text-slate-400 font-mono block">Sensitivity Boundary</span>
+              <span className="text-xs font-mono font-bold text-cyan-300">
+                Threshold: {decisionThreshold.toFixed(2)}
+              </span>
+            </div>
+            <div className="flex items-center space-x-2 bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
+              <span className="text-[10px] font-mono text-slate-500">0.40</span>
+              <input
+                type="range"
+                min="0.40"
+                max="0.85"
+                step="0.05"
+                value={decisionThreshold}
+                onChange={(e) => setDecisionThreshold(Number(e.target.value))}
+                className="w-24 sm:w-28 accent-cyan-400 cursor-pointer"
+                title={`Adjust anomaly threshold: ${decisionThreshold.toFixed(2)}`}
+              />
+              <span className="text-[10px] font-mono text-slate-500">0.85</span>
+            </div>
+          </div>
         </div>
 
         {/* Sliders Grid & Live Inference Gauge */}
@@ -438,12 +458,15 @@ export default function AuditorPage() {
                   }`}
                   style={{ width: `${Math.min(100, probeResult.score * 100)}%` }}
                 ></div>
-                {/* 0.60 threshold line */}
-                <div className="absolute top-0 bottom-0 left-[60%] w-0.5 bg-white/70"></div>
+                {/* Dynamic threshold marker line */}
+                <div 
+                  className="absolute top-0 bottom-0 w-0.5 bg-white shadow-sm shadow-white z-10 transition-all duration-150"
+                  style={{ left: `${Math.round(decisionThreshold * 100)}%` }}
+                ></div>
               </div>
               <div className="flex justify-between text-[10px] font-mono text-slate-500">
                 <span>0.0 Normal</span>
-                <span className="text-white font-bold">| 0.60 Threshold</span>
+                <span className="text-cyan-300 font-bold">| {decisionThreshold.toFixed(2)} Dynamic Threshold</span>
                 <span>1.0 Anomaly</span>
               </div>
             </div>

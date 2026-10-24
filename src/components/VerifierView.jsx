@@ -23,6 +23,7 @@ export default function VerifierView({ currentProof, onSelectVerifier }) {
   const [nonceTimeRemaining, setNonceTimeRemaining] = useState(180);
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState(null);
+  const [consumedNonces, setConsumedNonces] = useState(() => new Set());
 
   const currentVerifier = VERIFIERS.find(v => v.id === selectedVerifierId) || VERIFIERS[0];
 
@@ -47,25 +48,60 @@ export default function VerifierView({ currentProof, onSelectVerifier }) {
   };
 
   const handleRunVerification = () => {
+    const effectiveNonce = activeNonce ? activeNonce.value : '0x992fa...11c';
+
+    // Check 1: Nonce expiration check (180s TTL)
+    if (nonceTimeRemaining <= 0 || (activeNonce && Date.now() > activeNonce.expiresAt)) {
+      setVerificationResult({
+        valid: false,
+        summary: "Session Challenge Expired (180s TTL)",
+        issues: [
+          "Security Violation: Active session challenge nonce has expired (180s TTL).",
+          "In accordance with W3C zero-knowledge freshness standards, presentation proofs cannot be verified against expired challenge nonces.",
+          "Please click 'Refresh Challenge' to obtain a fresh anti-replay nonce."
+        ],
+        timestamp: new Date().toLocaleTimeString()
+      });
+      return;
+    }
+
+    // Check 2: Single-use anti-replay enforcement
+    if (consumedNonces.has(effectiveNonce)) {
+      setVerificationResult({
+        valid: false,
+        summary: "Replay Attack Blocked",
+        issues: [
+          `Security Violation: Challenge nonce (${effectiveNonce.substring(0, 16)}...) has already been consumed for a previous presentation.`,
+          "Strict Replay Defense: Blinded BBS+ presentations must strictly consume fresh single-use nonces to eliminate replay attacks and preserve unlinkability."
+        ],
+        timestamp: new Date().toLocaleTimeString()
+      });
+      return;
+    }
+
     setIsVerifying(true);
     setVerificationResult(null);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       // Find matching synthetic credential if no currentProof passed
       const cred = CREDENTIALS[0];
       const proofToTest = currentProof || deriveBbsProof({
         credential: cred,
         selectedPredicateIds: currentVerifier.requiredPredicates,
-        nonce: activeNonce ? activeNonce.value : '0x992fa...11c',
+        nonce: effectiveNonce,
         verifierDid: currentVerifier.did
       });
 
-      const res = verifyProof(
+      const res = await verifyProof(
         proofToTest,
-        activeNonce ? activeNonce.value : proofToTest.nonceBinding,
+        effectiveNonce,
         currentVerifier.did,
         142
       );
+
+      if (res.valid) {
+        setConsumedNonces(prev => new Set(prev).add(effectiveNonce));
+      }
 
       setVerificationResult({
         ...res,
@@ -274,11 +310,15 @@ export default function VerifierView({ currentProof, onSelectVerifier }) {
                   </div>
                   <div className="p-2 rounded bg-black/40 border border-slate-800 flex items-center justify-between">
                     <span className="text-slate-400">Revocation Root:</span>
-                    <span className="text-emerald-400">UNREVOKED</span>
+                    <span className="text-emerald-400">UNREVOKED (#{verificationResult.verifiedEpoch || 142})</span>
                   </div>
                   <div className="p-2 rounded bg-black/40 border border-slate-800 flex items-center justify-between">
                     <span className="text-slate-400">Issuer Accredited:</span>
-                    <span className="text-emerald-400">ON-CHAIN (CeG)</span>
+                    <span className="text-emerald-400 truncate max-w-[130px]" title={verificationResult.onChainIssuerData?.name || verificationResult.proofTested?.issuer || "Accredited Authority"}>
+                      {verificationResult.onChainIssuerData?.name 
+                        ? `ON-CHAIN (${verificationResult.onChainIssuerData.name.split(',')[0].replace('Karnataka ', '').trim()})` 
+                        : (verificationResult.proofTested?.issuer ? `ON-CHAIN (${verificationResult.proofTested.issuer})` : 'ON-CHAIN (Verified)')}
+                    </span>
                   </div>
                 </div>
 

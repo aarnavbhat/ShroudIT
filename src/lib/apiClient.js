@@ -88,12 +88,12 @@ export async function fetchLinkabilitySimulation(params = {}) {
 /**
  * Score telemetry vector through Isolation Forest via API
  */
-export async function fetchAnomalyInference(vector) {
+export async function fetchAnomalyInference(vector, threshold = 0.60) {
   try {
     const res = await fetch(`${BACKEND_URL}/api/auditor/anomaly-detect`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vector })
+      body: JSON.stringify({ vector, threshold })
     });
     if (res.ok) {
       return await res.json();

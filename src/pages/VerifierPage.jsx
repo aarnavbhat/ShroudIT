@@ -43,6 +43,7 @@ export default function VerifierPage() {
   const [verificationResult, setVerificationResult] = useState(null);
   const [scanAnimationActive, setScanAnimationActive] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [consumedNonces, setConsumedNonces] = useState(() => new Set());
 
   const currentVerifier = allVerifiers.find(v => v.id === selectedVerifierId) || allVerifiers[0] || VERIFIERS[0];
 
@@ -81,9 +82,40 @@ export default function VerifierPage() {
     setScanAnimationActive(true);
     setVerificationResult(null);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       setScanAnimationActive(false);
       const effectiveNonce = (proof && (proof.nonceBinding || proof.nonce || proof.n)) || (activeNonce ? activeNonce.value : '0x992fa...11c');
+
+      // Check 1: Nonce expiration check (180s TTL)
+      if (nonceTimeRemaining <= 0 || (activeNonce && Date.now() > activeNonce.expiresAt)) {
+        setVerificationResult({
+          valid: false,
+          summary: "Session Challenge Expired (180s TTL)",
+          issues: [
+            "Security Violation: Active session challenge nonce has expired (180s TTL).",
+            "In accordance with W3C zero-knowledge freshness standards, presentation proofs cannot be verified against expired challenge nonces.",
+            "Please click 'Refresh Challenge' to obtain a fresh anti-replay nonce."
+          ],
+          timestamp: new Date().toLocaleTimeString()
+        });
+        setIsVerifying(false);
+        return;
+      }
+
+      // Check 2: Single-use anti-replay enforcement
+      if (consumedNonces.has(effectiveNonce)) {
+        setVerificationResult({
+          valid: false,
+          summary: "Replay Attack Blocked",
+          issues: [
+            `Security Violation: Challenge nonce (${effectiveNonce.substring(0, 16)}...) has already been consumed for a previous presentation.`,
+            "Strict Replay Defense: Blinded BBS+ presentations must strictly consume fresh single-use nonces to eliminate replay attacks and preserve unlinkability."
+          ],
+          timestamp: new Date().toLocaleTimeString()
+        });
+        setIsVerifying(false);
+        return;
+      }
       
       // Auto-detect target verifier if presentation was bound to a specific registered city verifier
       const boundVerifier = (proof && (proof.verifierBinding || proof.v));
@@ -101,12 +133,16 @@ export default function VerifierPage() {
         verifierDid: currentVerifier.did
       });
 
-      const res = verifyProof(
+      const res = await verifyProof(
         proofToTest,
         effectiveNonce,
         boundVerifier || currentVerifier.did,
         142
       );
+
+      if (res.valid) {
+        setConsumedNonces(prev => new Set(prev).add(effectiveNonce));
+      }
 
       setVerificationResult({
         ...res,
@@ -117,26 +153,61 @@ export default function VerifierPage() {
   };
 
   const handleRunVerification = () => {
+    const effectiveNonce = activeNonce ? activeNonce.value : '0x992fa...11c';
+
+    // Check 1: Nonce expiration check (180s TTL)
+    if (nonceTimeRemaining <= 0 || (activeNonce && Date.now() > activeNonce.expiresAt)) {
+      setVerificationResult({
+        valid: false,
+        summary: "Session Challenge Expired (180s TTL)",
+        issues: [
+          "Security Violation: Active session challenge nonce has expired (180s TTL).",
+          "In accordance with zero-knowledge freshness standards, presentation proofs cannot be verified against expired challenge nonces.",
+          "Please click 'Refresh Challenge' to obtain a fresh anti-replay nonce."
+        ],
+        timestamp: new Date().toLocaleTimeString()
+      });
+      return;
+    }
+
+    // Check 2: Single-use anti-replay enforcement
+    if (consumedNonces.has(effectiveNonce)) {
+      setVerificationResult({
+        valid: false,
+        summary: "Replay Attack Blocked",
+        issues: [
+          `Security Violation: Challenge nonce (${effectiveNonce.substring(0, 16)}...) has already been consumed for a previous presentation.`,
+          "Strict Replay Defense: Blinded BBS+ presentations must strictly consume fresh single-use nonces to eliminate replay attacks and preserve unlinkability."
+        ],
+        timestamp: new Date().toLocaleTimeString()
+      });
+      return;
+    }
+
     setIsVerifying(true);
     setScanAnimationActive(true);
     setVerificationResult(null);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       setScanAnimationActive(false);
       const cred = CREDENTIALS[0];
       const proofToTest = deriveBbsProof({
         credential: cred,
         selectedPredicateIds: currentVerifier.requiredPredicates,
-        nonce: activeNonce ? activeNonce.value : '0x992fa...11c',
+        nonce: effectiveNonce,
         verifierDid: currentVerifier.did
       });
 
-      const res = verifyProof(
+      const res = await verifyProof(
         proofToTest,
-        activeNonce ? activeNonce.value : proofToTest.nonceBinding,
+        effectiveNonce,
         currentVerifier.did,
         142
       );
+
+      if (res.valid) {
+        setConsumedNonces(prev => new Set(prev).add(effectiveNonce));
+      }
 
       setVerificationResult({
         ...res,
@@ -387,11 +458,15 @@ export default function VerifierPage() {
                     </div>
                     <div className="p-2 rounded-lg bg-black/50 border border-slate-800 flex items-center justify-between">
                       <span className="text-slate-400">Epoch Status Root:</span>
-                      <span className="text-emerald-400 font-bold">UNREVOKED (#142)</span>
+                      <span className="text-emerald-400 font-bold">UNREVOKED (#{verificationResult.verifiedEpoch || 142})</span>
                     </div>
                     <div className="p-2 rounded-lg bg-black/50 border border-slate-800 flex items-center justify-between">
                       <span className="text-slate-400">Issuer Accreditation:</span>
-                      <span className="text-emerald-400 font-bold">ON-CHAIN (CeG)</span>
+                      <span className="text-emerald-400 font-bold truncate max-w-[145px]" title={verificationResult.onChainIssuerData?.name || verificationResult.proofTested?.issuer || "Accredited Authority"}>
+                        {verificationResult.onChainIssuerData?.name 
+                          ? `ON-CHAIN (${verificationResult.onChainIssuerData.name.split(',')[0].replace('Karnataka ', '').trim()})` 
+                          : (verificationResult.proofTested?.issuer ? `ON-CHAIN (${verificationResult.proofTested.issuer})` : 'ON-CHAIN (Verified)')}
+                      </span>
                     </div>
                   </div>
 

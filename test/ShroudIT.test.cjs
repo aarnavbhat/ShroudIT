@@ -14,7 +14,8 @@ describe("ShroudIT On-Chain Trust Registry", function () {
   const BMTC_DID = "did:shroud:bmtc-transit";
   const DSW_DID = "did:shroud:karnataka-dsw";
 
-  const FAKE_BLS_KEY = "0x04e8b394f99a128e4091ab7721cd882194f10928e4912984019284091823901928409128";
+  // Authentic 192-hex BLS12-381 G2 curve public key (96 bytes uncompressed)
+  const AUTHENTIC_BLS_KEY = "0xb5763ce3b693ae30a7851cb76419ce2a373b984fa5b35790df5ba896f63f5383f5e56e02a0df8d48625902008f1b630501867c468e82a93fb5788448f725a3d75c6bf7f34149b5df408013f9f91a92e10507d3f8205efc86ce3e7eefee8153c9";
   const SCHEMA_RESIDENT = ethers.id("ResidentIdentity_v2");
   const SCHEMA_TRANSIT = ethers.id("StudentTransitPass_v3");
 
@@ -46,7 +47,7 @@ describe("ShroudIT On-Chain Trust Registry", function () {
       await issuerRegistry.registerIssuer(
         CEG_DID,
         "Center for e-Governance, Karnataka",
-        FAKE_BLS_KEY,
+        AUTHENTIC_BLS_KEY,
         [SCHEMA_RESIDENT]
       );
 
@@ -60,14 +61,14 @@ describe("ShroudIT On-Chain Trust Registry", function () {
     });
 
     it("should reject duplicate issuer registration", async function () {
-      await issuerRegistry.registerIssuer(CEG_DID, "CeG", FAKE_BLS_KEY, []);
+      await issuerRegistry.registerIssuer(CEG_DID, "CeG", AUTHENTIC_BLS_KEY, []);
       await expect(
-        issuerRegistry.registerIssuer(CEG_DID, "CeG Duplicate", FAKE_BLS_KEY, [])
+        issuerRegistry.registerIssuer(CEG_DID, "CeG Duplicate", AUTHENTIC_BLS_KEY, [])
       ).to.be.revertedWith("IssuerRegistry: issuer already active");
     });
 
     it("should allow revocation of a compromised issuer", async function () {
-      await issuerRegistry.registerIssuer(BMTC_DID, "BMTC Transit", FAKE_BLS_KEY, []);
+      await issuerRegistry.registerIssuer(BMTC_DID, "BMTC Transit", AUTHENTIC_BLS_KEY, []);
       expect(await issuerRegistry.isIssuerAccredited(BMTC_DID)).to.equal(true);
 
       await issuerRegistry.revokeIssuer(BMTC_DID, "Key compromise detected in security audit");
@@ -79,7 +80,7 @@ describe("ShroudIT On-Chain Trust Registry", function () {
         issuerRegistry.connect(unauthorized).registerIssuer(
           "did:shroud:rogue-authority",
           "Fake Dept",
-          FAKE_BLS_KEY,
+          AUTHENTIC_BLS_KEY,
           []
         )
       ).to.be.revertedWith("IssuerRegistry: caller is not the owner");
@@ -124,7 +125,7 @@ describe("ShroudIT On-Chain Trust Registry", function () {
 
     it("should log a batch for an accredited issuer and prevent silent mass issuance", async function () {
       // First register the issuer
-      await issuerRegistry.registerIssuer(CEG_DID, "CeG", FAKE_BLS_KEY, [SCHEMA_RESIDENT]);
+      await issuerRegistry.registerIssuer(CEG_DID, "CeG", AUTHENTIC_BLS_KEY, [SCHEMA_RESIDENT]);
 
       await issuanceLog.logBatch("BATCH-2026-042", CEG_DID, BATCH_ROOT, 2450);
 

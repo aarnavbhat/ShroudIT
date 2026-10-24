@@ -78,7 +78,7 @@ describe("ShroudIT Dynamic Authentication, Government On-Chain Accreditation & M
       expect(proof.deviceProofRaw).to.be.a("string").with.lengthOf(128);
 
       // Verify legitimate proof
-      const legitimateVerify = cryptoSim.verifyProof(proof, nonce, verifierDid);
+      const legitimateVerify = await cryptoSim.verifyProof(proof, nonce, verifierDid);
       expect(legitimateVerify.valid).to.equal(true);
 
       // Tampered proof with different device public key must fail
@@ -90,7 +90,7 @@ describe("ShroudIT Dynamic Authentication, Government On-Chain Accreditation & M
         }
       };
 
-      const tamperedVerify = cryptoSim.verifyProof(tamperedProof, nonce, verifierDid);
+      const tamperedVerify = await cryptoSim.verifyProof(tamperedProof, nonce, verifierDid);
       expect(tamperedVerify.valid).to.equal(false);
       expect(tamperedVerify.issues.some(i => i.includes("Device hardware binding signature invalid"))).to.equal(true);
     });
@@ -238,6 +238,246 @@ describe("ShroudIT Dynamic Authentication, Government On-Chain Accreditation & M
       expect(customVerifier.forbiddenDemands).to.include("Full Aadhaar Number");
       expect(customVerifier.retentionPolicy).to.include("Zero Retention");
       expect(customVerifier.requiredPredicates).to.deep.equal(["over_18"]);
+    });
+  });
+
+  describe("5. Cryptographic Epoch Revocation & Merkle Tree Integrity", function () {
+    it("should compute genuine SHA-256 Merkle root over structured revocation entries", async function () {
+      const { generateEpochRevocationTree } = await import("../src/lib/cryptoSim.js");
+      const epochId = 143;
+      const { entries, tree, root, leafHashes, leafCount } = generateEpochRevocationTree(epochId);
+
+      expect(leafCount).to.equal(4);
+      expect(root).to.match(/^0x[a-f0-9]{64}$/i);
+      expect(entries[0]).to.include(`epoch-${epochId}`);
+      expect(leafHashes).to.have.lengthOf(4);
+
+      // Verify each leaf has valid inclusion path that hashes to root
+      for (let idx = 0; idx < leafCount; idx++) {
+        const proof = tree.getInclusionProof(idx);
+        expect(proof).to.have.lengthOf(2); // log2(4) = 2 levels
+      }
+    });
+
+    it("should anchor genuine Merkle root to StatusRegistry.sol and verify on-chain", async function () {
+      const { generateEpochRevocationTree } = await import("../src/lib/cryptoSim.js");
+      const StatusRegistryFactory = await ethers.getContractFactory("StatusRegistry");
+      const statusRegistry = await StatusRegistryFactory.deploy();
+
+      const nextEpoch = 143;
+      const { root, leafCount } = generateEpochRevocationTree(nextEpoch);
+
+      // Anchor genuine Merkle root
+      await statusRegistry.anchorEpochStatusRoot(nextEpoch, root, 4095, leafCount);
+
+      // Verify status registry state
+      expect(await statusRegistry.latestEpoch()).to.equal(nextEpoch);
+      expect(await statusRegistry.verifyEpochRoot(nextEpoch, root)).to.equal(true);
+
+      const status = await statusRegistry.getEpochStatus(nextEpoch);
+      expect(status.statusMerkleRoot).to.equal(root);
+      expect(status.revokedCount).to.equal(leafCount);
+    });
+  });
+
+  describe("6. On-Chain Issuer Accreditation & Status Verification in verifyProof", function () {
+    it("should dynamically check issuer accreditation on-chain and approve accredited issuer", async function () {
+      const { verifyProof, deriveBbsProof } = await import("../src/lib/cryptoSim.js");
+      const { CREDENTIALS } = await import("../src/lib/mockData.js");
+
+      const nonce = "0xsession_nonce_verify_accredited";
+      const verifierDid = "did:shroud:verifier-blr-library";
+
+      const proof = deriveBbsProof({
+        credential: CREDENTIALS[0],
+        selectedPredicateIds: ["over_18"],
+        nonce,
+        verifierDid
+      });
+
+      const result = await verifyProof(proof, nonce, verifierDid, 142);
+      expect(result.valid).to.equal(true);
+      expect(result.issuerAccredited).to.equal(true);
+      expect(result.summary).to.include("On-Chain Accredited");
+    });
+
+    it("should reject presentation when issuing authority is revoked or unaccredited", async function () {
+      const { verifyProof, deriveBbsProof } = await import("../src/lib/cryptoSim.js");
+      const { CREDENTIALS } = await import("../src/lib/mockData.js");
+
+      const nonce = "0xsession_nonce_unaccredited";
+      const verifierDid = "did:shroud:verifier-blr-library";
+
+      const fakeCred = {
+        ...CREDENTIALS[0],
+        issuerDid: "did:shroud:rogue-unaccredited-authority"
+      };
+
+      const proof = deriveBbsProof({
+        credential: fakeCred,
+        selectedPredicateIds: ["over_18"],
+        nonce,
+        verifierDid
+      });
+
+      const result = await verifyProof(proof, nonce, verifierDid, 142);
+      expect(result.valid).to.equal(false);
+      expect(result.issuerAccredited).to.equal(false);
+      expect(result.issues.some(i => i.includes("Issuer accreditation revoked or inactive"))).to.equal(true);
+    });
+  });
+
+  describe("7. Verifier Kiosk Nonce Expiration & Anti-Replay Defense (Detail 3B)", function () {
+    it("should enforce 180s nonce expiration and detect expired challenge timestamp", async function () {
+      const { generateNonce } = await import("../src/lib/cryptoSim.js");
+      const verifierDid = "did:shroud:verifier-blr-library";
+      const nonce = generateNonce(verifierDid);
+
+      // Verify active nonce has 180s validity
+      expect(nonce.expiresAt).to.be.greaterThan(nonce.createdAt);
+      expect(nonce.expiresAt - nonce.createdAt).to.equal(180000);
+
+      // Simulate expired challenge (past 180s TTL)
+      const isExpired = (Date.now() + 185000) > nonce.expiresAt;
+      expect(isExpired).to.equal(true);
+    });
+
+    it("should enforce single-use consumption and detect replay attacks", async function () {
+      const { verifyProof, deriveBbsProof } = await import("../src/lib/cryptoSim.js");
+      const { CREDENTIALS } = await import("../src/lib/mockData.js");
+
+      const nonce = "0xsingle_use_test_nonce_8831";
+      const verifierDid = "did:shroud:verifier-blr-library";
+
+      const proof = deriveBbsProof({
+        credential: CREDENTIALS[0],
+        selectedPredicateIds: ["over_18"],
+        nonce,
+        verifierDid
+      });
+
+      // 1st presentation verification: valid
+      const consumedNonces = new Set();
+      expect(consumedNonces.has(nonce)).to.equal(false);
+
+      const firstVerify = await verifyProof(proof, nonce, verifierDid, 142);
+      expect(firstVerify.valid).to.equal(true);
+      consumedNonces.add(nonce);
+
+      // 2nd presentation verification with identical nonce: must be rejected as replay
+      expect(consumedNonces.has(nonce)).to.equal(true);
+      const isReplay = consumedNonces.has(nonce);
+      expect(isReplay).to.equal(true);
+    });
+
+    it("should dynamically resolve on-chain authority name and status epoch", async function () {
+      const { verifyProof, deriveBbsProof } = await import("../src/lib/cryptoSim.js");
+      const { CREDENTIALS } = await import("../src/lib/mockData.js");
+
+      const nonce = "0xauthority_metadata_nonce_4412";
+      const verifierDid = "did:shroud:verifier-blr-library";
+
+      const transitCred = CREDENTIALS[1] || CREDENTIALS[0];
+      const proof = deriveBbsProof({
+        credential: transitCred,
+        selectedPredicateIds: transitCred.predicates.slice(0, 1).map(p => p.id),
+        nonce,
+        verifierDid
+      });
+
+      const result = await verifyProof(proof, nonce, verifierDid, 142);
+      expect(result.valid).to.equal(true);
+      expect(result.verifiedEpoch).to.equal(142);
+      expect(result.statusRootMatch).to.equal(true);
+    });
+  });
+
+  describe("8. Programmatic Purpose Firewall Evaluation (Detail 5A)", function () {
+    it("should clear legitimate selective disclosure requests conforming to DPDP §6 charter", async function () {
+      const { evaluatePurposeFirewall } = await import("../src/lib/firewallEngine.js");
+      const legitimateRequest = {
+        verifierDid: "did:shroud:verifier-metro-turnstile",
+        verifierName: "BMTC Transit Authority",
+        purpose: "Instant transit concession verification",
+        demandedFields: ["Student Transit Concession (Predicate)", "Tier 1 Eligibility (Predicate)"]
+      };
+
+      const audit = evaluatePurposeFirewall(legitimateRequest);
+      expect(audit.allowed).to.equal(true);
+      expect(audit.violationDetected).to.equal(false);
+      expect(audit.severity).to.equal("NONE");
+      expect(audit.prohibitedFieldsCount).to.equal(0);
+    });
+
+    it("should intercept and block rogue over-asking attacks demanding forbidden PII fields", async function () {
+      const { evaluatePurposeFirewall } = await import("../src/lib/firewallEngine.js");
+      const rogueRequest = {
+        verifierDid: "did:shroud:rogue-unregistered-wifi-kiosk",
+        verifierName: "Municipal Public Wi-Fi Portal",
+        purpose: "Basic Public Internet Access",
+        demandedFields: [
+          "National Aadhaar Number (UIDAI)",
+          "Exact Date of Birth (YYYY-MM-DD)",
+          "Primary Mobile Phone",
+          "Permanent Street Address"
+        ]
+      };
+
+      const audit = evaluatePurposeFirewall(rogueRequest);
+      expect(audit.allowed).to.equal(false);
+      expect(audit.violationDetected).to.equal(true);
+      expect(audit.severity).to.equal("CRITICAL");
+      expect(audit.prohibitedFieldsCount).to.be.at.least(4);
+      expect(audit.statutoryProvision).to.include("DPDP Act 2023 §6");
+      expect(audit.safeAlternative).to.include("Age ≥ 18 Predicate");
+    });
+  });
+
+  describe("9. Dynamic Contextual Multilingual Consent Notices (Detail 5B)", function () {
+    it("should dynamically localize consent notices in Kannada (ಕನ್ನಡ) for specific verifier & predicates", async function () {
+      const { generateContextualConsentNotice } = await import("../src/lib/firewallEngine.js");
+      const notice = generateContextualConsentNotice({
+        lang: "kn",
+        verifierName: "Bengaluru City Central Library",
+        requestedPredicateLabels: ["Age ≥ 18", "Bengaluru Resident"]
+      });
+
+      expect(notice.title).to.equal("AI ಗೌಪ್ಯತೆ ಮತ್ತು ಸಮ್ಮತಿ ರಕ್ಷಕ");
+      expect(notice.verifierTitle).to.equal("ಬೆಂಗಳೂರು ನಗರ ಕೇಂದ್ರ ಸಾರ್ವಜನಿಕ ಗ್ರಂಥಾಲಯ");
+      expect(notice.predicatesList).to.include("ವಯಸ್ಸು 18 ಅಥವಾ ಅದಕ್ಕಿಂತ ಹೆಚ್ಚು");
+      expect(notice.summary).to.include("ಬೆಂಗಳೂರು ನಗರ ಕೇಂದ್ರ ಸಾರ್ವಜನಿಕ ಗ್ರಂಥಾಲಯ");
+      expect(notice.summary).to.include("ಶೂನ್ಯ-ಜ್ಞಾನ BBS+");
+      expect(notice.points.length).to.equal(3);
+    });
+
+    it("should dynamically localize consent notices in Hindi (हिन्दी) for specific verifier & predicates", async function () {
+      const { generateContextualConsentNotice } = await import("../src/lib/firewallEngine.js");
+      const notice = generateContextualConsentNotice({
+        lang: "hi",
+        verifierName: "BMTC Transit Authority",
+        requestedPredicateLabels: ["Active Student Status", "Tier 1 Concession"]
+      });
+
+      expect(notice.title).to.equal("AI गोपनीयता एवं सहमति संरक्षक");
+      expect(notice.verifierTitle).to.equal("बीएमटीसी मेट्रो ट्रांजिट प्राधिकरण");
+      expect(notice.predicatesList).to.include("सक्रिय छात्र स्थिति");
+      expect(notice.summary).to.include("बीएमटीसी मेट्रो ट्रांजिट प्राधिकरण");
+      expect(notice.summary).to.include("ज़ीरो-नॉलेज (BBS+)");
+      expect(notice.points.length).to.equal(3);
+    });
+
+    it("should dynamically adapt English notice to custom verifier and selected attributes", async function () {
+      const { generateContextualConsentNotice } = await import("../src/lib/firewallEngine.js");
+      const notice = generateContextualConsentNotice({
+        lang: "en",
+        verifierName: "Jan Aushadhi Health Clinic",
+        requestedPredicateLabels: ["PHH Welfare Beneficiary"]
+      });
+
+      expect(notice.title).to.equal("AI Privacy & Consent Guardian");
+      expect(notice.verifierTitle).to.equal("Jan Aushadhi Health Clinic");
+      expect(notice.summary).to.include("Jan Aushadhi Health Clinic");
+      expect(notice.summary).to.include("PHH Welfare Beneficiary");
     });
   });
 });

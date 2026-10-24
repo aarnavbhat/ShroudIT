@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
 import { Shield, Check, X, Globe, Sparkles, AlertCircle, FileCheck } from 'lucide-react';
-import { EXPLAINER_TRANSLATIONS } from '../lib/mockData';
+import { generateContextualConsentNotice } from '../lib/firewallEngine';
 
 export default function ConsentExplainerModal({ isOpen, onClose, verifierName, requestedPredicateLabels, onAuthorize }) {
   const [lang, setLang] = useState('en');
 
   if (!isOpen) return null;
 
-  const t = EXPLAINER_TRANSLATIONS[lang] || EXPLAINER_TRANSLATIONS.en;
+  const t = generateContextualConsentNotice({
+    lang,
+    verifierName: verifierName || 'Bengaluru City Central Library',
+    requestedPredicateLabels: requestedPredicateLabels || ['Age ≥ 18', 'Bengaluru Resident']
+  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
@@ -59,12 +63,12 @@ export default function ConsentExplainerModal({ isOpen, onClose, verifierName, r
         <div className="mt-4 p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
           <div className="flex items-center justify-between text-xs">
             <span className="text-slate-400">Requesting Authority:</span>
-            <span className="text-cyan-300 font-medium">{verifierName || 'Bengaluru City Central Library'}</span>
+            <span className="text-cyan-300 font-medium">{t.verifierTitle}</span>
           </div>
           <div className="flex items-start justify-between text-xs">
             <span className="text-slate-400">Zero-Knowledge Predicates:</span>
             <div className="flex flex-wrap gap-1 justify-end max-w-[65%]">
-              {(requestedPredicateLabels || ['Age ≥ 18', 'Bengaluru Resident']).map((p, idx) => (
+              {t.predicatesList.map((p, idx) => (
                 <span key={idx} className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 font-mono text-[11px]">
                   {p}
                 </span>

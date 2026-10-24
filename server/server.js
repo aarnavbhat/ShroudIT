@@ -248,7 +248,7 @@ app.post('/api/auditor/simulate-linkability', (req, res) => {
 // --- Auditor API: Isolation Forest Telemetry Anomaly Inference ---
 app.post('/api/auditor/anomaly-detect', (req, res) => {
   try {
-    const { vector, telemetry } = req.body || {};
+    const { vector, telemetry, threshold } = req.body || {};
     let featureVector = vector;
 
     if (!featureVector && telemetry) {
@@ -265,7 +265,8 @@ app.post('/api/auditor/anomaly-detect', (req, res) => {
       return res.status(400).json({ error: "Invalid vector. Expected 5-element numerical array." });
     }
 
-    const evaluation = evaluateTelemetryVector(featureVector);
+    const effectiveThreshold = threshold !== undefined ? Number(threshold) : 0.60;
+    const evaluation = evaluateTelemetryVector(featureVector, effectiveThreshold);
     return res.json(evaluation);
   } catch (err) {
     return res.status(500).json({ error: err.message });
