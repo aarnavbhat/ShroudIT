@@ -174,4 +174,56 @@ describe("Government Document Cryptographic Verification & AI Purpose Limitation
       expect(disqualifiedIds).to.include("over_18");
     });
   });
+
+  describe("4. Raw (r, s) to ASN.1 DER Signature Conversion & Verification", function () {
+    it("should convert a raw (r, s) object to valid ASN.1 DER format", function () {
+      const rawObj = {
+        r: "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
+        s: "0x2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d"
+      };
+
+      const derBytes = govSigner.rawRsToDer(rawObj);
+      expect(derBytes).to.be.an.instanceOf(Uint8Array);
+      // DER sequence begins with tag 0x30
+      expect(derBytes[0]).to.equal(0x30);
+      // First integer tag 0x02
+      expect(derBytes[2]).to.equal(0x02);
+      expect(derBytes.length).to.be.at.least(70).and.at.most(73);
+    });
+
+    it("should prepend 0x00 when integer has high bit set (>= 0x80) to preserve non-negative DER encoding", function () {
+      // 0x95 has high bit set (0x95 >= 0x80)
+      const highR = new Uint8Array(32);
+      highR.fill(0x95);
+      const lowS = new Uint8Array(32);
+      lowS.fill(0x15);
+
+      const der = govSigner.rawRsToDer(highR, lowS);
+      expect(der[0]).to.equal(0x30);
+      expect(der[2]).to.equal(0x02);
+      // r should have length 33 (0x21) because leading 0x00 is added
+      expect(der[3]).to.equal(33);
+      expect(der[4]).to.equal(0x00);
+      expect(der[5]).to.equal(0x95);
+    });
+
+    it("should convert raw 64-byte hex and base64 strings to ASN.1 DER", function () {
+      const raw64Hex = "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d";
+      const derFromHex = govSigner.rawRsToDer(raw64Hex);
+      expect(derFromHex).to.be.an.instanceOf(Uint8Array);
+      expect(derFromHex[0]).to.equal(0x30);
+
+      // Convert DER back to P1363 (64 bytes)
+      const p1363 = govSigner.derToP1363(derFromHex);
+      expect(p1363.length).to.equal(64);
+    });
+
+    it("should preserve already DER-encoded signatures", function () {
+      const raw64Hex = "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d";
+      const der1 = govSigner.rawRsToDer(raw64Hex);
+      const der2 = govSigner.rawRsToDer(der1);
+      expect(der2.length).to.equal(der1.length);
+      expect(der2[0]).to.equal(0x30);
+    });
+  });
 });

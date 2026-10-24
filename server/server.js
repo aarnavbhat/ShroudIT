@@ -10,6 +10,7 @@ import {
   simulateCrossServiceLinkability 
 } from '../src/lib/aiAnomalyEngine.js';
 import { sha256 } from '@noble/hashes/sha2.js';
+import { verifyGovernmentSignature } from '../src/lib/governmentSigner.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -198,6 +199,18 @@ app.post('/api/verifier/verify', (req, res) => {
   } catch (err) {
     console.error("Verification endpoint error:", err);
     return res.status(500).json({ valid: false, error: err.message });
+  }
+});
+
+// --- Government Document Verification API (ECDSA NIST P-256 / DER) ---
+app.post('/api/government/verify', async (req, res) => {
+  try {
+    const { document, signature } = req.body || {};
+    const targetDoc = document || req.body;
+    const result = await verifyGovernmentSignature(targetDoc, signature);
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ valid: false, reason: err.message });
   }
 });
 

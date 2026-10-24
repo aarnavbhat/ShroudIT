@@ -121,6 +121,8 @@ export default function DocumentIngestionPage() {
       setVerificationResult({
         valid: true,
         algorithm: sigCheck.algorithm,
+        signatureFormat: sigCheck.signatureFormat,
+        derSignatureHex: sigCheck.derSignatureHex,
         publicKey: sigCheck.publicKey,
         verifiedAt: sigCheck.verifiedAt,
         issuerAuthority: sigCheck.issuerAuthority
@@ -395,23 +397,35 @@ export default function DocumentIngestionPage() {
           {verificationResult && verificationResult.valid && generatedCredential && (
             <div className="space-y-5 animate-fadeIn">
               {/* Step 1: Cryptographic Seal Badge */}
-              <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/40 flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-950 border border-emerald-700 flex items-center justify-center text-emerald-400 shrink-0">
-                    <CheckCircle2 className="w-5 h-5" />
+              <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/40 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-950 border border-emerald-700 flex items-center justify-center text-emerald-400 shrink-0">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                        Government Signature Authenticated
+                      </h4>
+                      <p className="text-[11px] text-emerald-400 font-mono">
+                        {verificationResult.algorithm}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                      Government Signature Authenticated
-                    </h4>
-                    <p className="text-[11px] text-emerald-400 font-mono">
-                      {verificationResult.algorithm}
-                    </p>
-                  </div>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-900 text-emerald-200 border border-emerald-700">
+                    PASSED
+                  </span>
                 </div>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-900 text-emerald-200 border border-emerald-700">
-                  PASSED
-                </span>
+                {verificationResult.signatureFormat && (
+                  <div className="pt-2 border-t border-emerald-900/50 flex flex-wrap items-center justify-between gap-1 text-[10px] font-mono text-emerald-300/90">
+                    <span>Format: {verificationResult.signatureFormat}</span>
+                    {verificationResult.derSignatureHex && (
+                      <span className="text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800" title={verificationResult.derSignatureHex}>
+                        DER: {verificationResult.derSignatureHex.substring(0, 16)}...
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Step 2: AI Eligibility & Disqualification Audit Box */}

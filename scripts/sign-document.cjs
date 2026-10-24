@@ -45,7 +45,27 @@ signer.update(Buffer.from(canonical));
 signer.end();
 const sigDer = signer.sign(privKeyPem);
 
+// Extract raw r and s from DER
+let off = 2;
+if (sigDer[1] & 0x80) off += (sigDer[1] & 0x7f);
+off++; // 0x02
+let rL = sigDer[off++];
+let rB = sigDer.subarray(off, off + rL);
+off += rL;
+off++; // 0x02
+let sL = sigDer[off++];
+let sB = sigDer.subarray(off, off + sL);
+
+if (rB.length > 32) rB = rB.subarray(rB.length - 32);
+if (sB.length > 32) sB = sB.subarray(sB.length - 32);
+const r32 = Buffer.alloc(32); rB.copy(r32, 32 - rB.length);
+const s32 = Buffer.alloc(32); sB.copy(s32, 32 - sB.length);
+
 doc.signature = sigDer.toString('base64');
+doc.signatureDerHex = sigDer.toString('hex');
+doc.r = '0x' + r32.toString('hex');
+doc.s = '0x' + s32.toString('hex');
+doc.rawSignatureHex = Buffer.concat([r32, s32]).toString('hex');
 doc.signedCanonicalHash = crypto.createHash('sha256').update(canonical).digest('hex');
 
 fs.writeFileSync(outputFile, JSON.stringify(doc, null, 2));
