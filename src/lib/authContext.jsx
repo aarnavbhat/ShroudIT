@@ -1,6 +1,7 @@
 // ShroudIT Dynamic Authentication & Multi-Persona Session Manager
-// Provides full role switching across Residents, Government Issuers, Verifier Bodies, and Auditors.
-// Zero hardcoding: Citizens, issuers, and verifiers can be dynamically registered with real keys.
+// Provides citizen identity management, government authority accreditation, and verifier kiosks.
+// Rule: Citizens can create unlimited accounts, but accounts ONLY become valid once they receive a government certification.
+// Attempting to log in without government verification strictly rejects with "not verified by government".
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { 
@@ -52,35 +53,63 @@ const DEFAULT_ISSUERS = [
   }
 ];
 
-// Pre-seeded sample citizen personas (plus user can create custom ones)
+// Pre-seeded sample citizen personas:
+// Aarav is pre-verified by government for instant testing.
+// Priya and Rohan start unverified (awaiting government certification).
 const DEFAULT_RESIDENTS = [
   {
     id: "res-aarav",
+    username: "aarav",
     name: "Aarav S. Rao",
     dob: "2003-08-14",
     domicile: "Bengaluru Urban (Ward 142)",
     nationalId: "IN-BLR-RES-884920",
     isStudent: true,
+    isGovernmentVerified: true,
+    status: "GOVERNMENT_VERIFIED",
+    certifications: [
+      {
+        id: "cred-foundation-aarav",
+        title: "Smart City Resident Identity",
+        issuer: "Center for e-Governance, Karnataka",
+        issuerDid: "did:shroud:gov-karnataka-ceg",
+        category: "Municipal Identity",
+        verifiedAt: "2026-01-15T10:00:00.000Z",
+        predicates: [
+          { id: "over_18", label: "Age ≥ 18", statement: "Holder is 18 years of age or older", value: true },
+          { id: "blr_resident", label: "Bengaluru Resident", statement: "Holder resides in Bengaluru Urban (Ward 142)", value: true },
+          { id: "valid_student", label: "Student Concession", statement: "Enrolled student at recognized institution", value: true }
+        ]
+      }
+    ],
     hardwareKey: generateDeviceHardwareKey(),
     did: "did:key:z6Mku7X...89p"
   },
   {
     id: "res-priya",
+    username: "priya",
     name: "Priya Sharma",
     dob: "1998-04-22",
     domicile: "Bengaluru South (Ward 180)",
     nationalId: "IN-BLR-RES-771204",
     isStudent: false,
+    isGovernmentVerified: false,
+    status: "PENDING_GOV_VERIFICATION",
+    certifications: [],
     hardwareKey: generateDeviceHardwareKey(),
     did: "did:key:z6Mkp2R...44w"
   },
   {
     id: "res-rohan",
+    username: "rohan",
     name: "Rohan Gupta",
     dob: "2005-11-09",
     domicile: "Bengaluru North (Ward 028)",
     nationalId: "IN-BLR-RES-993810",
     isStudent: true,
+    isGovernmentVerified: false,
+    status: "PENDING_GOV_VERIFICATION",
+    certifications: [],
     hardwareKey: generateDeviceHardwareKey(),
     did: "did:key:z6Mkt9A...12e"
   }
@@ -90,39 +119,58 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   // Current active session state
-  const [currentRole, setCurrentRole] = useState('resident'); // 'resident' | 'issuer' | 'verifier' | 'auditor'
+  const [currentRole, setCurrentRole] = useState('resident'); // 'resident' | 'issuer' | 'verifier' | 'guest'
   const [currentUser, setCurrentUser] = useState(DEFAULT_RESIDENTS[0]);
   const [allResidents, setAllResidents] = useState(DEFAULT_RESIDENTS);
   const [allIssuers, setAllIssuers] = useState(DEFAULT_ISSUERS);
   const [allVerifiers, setAllVerifiers] = useState(VERIFIERS);
   const [userCredentials, setUserCredentials] = useState(CREDENTIALS);
 
-  // Load persistent session from localStorage on mount
+  // Load persistent session and custom accounts from localStorage on mount
   useEffect(() => {
     try {
-      const savedSession = localStorage.getItem('shroudit_active_session');
-      if (savedSession) {
-        const parsed = JSON.parse(savedSession);
-        if (parsed.role) setCurrentRole(parsed.role);
-        if (parsed.user) setCurrentUser(parsed.user);
-      }
-
+      // 1. Load custom and updated residents
       const customResidents = localStorage.getItem('shroudit_custom_residents');
+      let combinedResidents = [...DEFAULT_RESIDENTS];
       if (customResidents) {
         const parsedCustom = JSON.parse(customResidents);
-        setAllResidents([...DEFAULT_RESIDENTS, ...parsedCustom]);
+        const map = new Map();
+        DEFAULT_RESIDENTS.forEach(r => map.set(r.id, r));
+        parsedCustom.forEach(r => map.set(r.id, r));
+        combinedResidents = Array.from(map.values());
+        setAllResidents(combinedResidents);
       }
 
+      // 2. Load custom issuers
       const customIssuers = localStorage.getItem('shroudit_custom_issuers');
       if (customIssuers) {
         const parsedIssuers = JSON.parse(customIssuers);
         setAllIssuers([...DEFAULT_ISSUERS, ...parsedIssuers]);
       }
 
+      // 3. Load custom verifiers
       const customVerifiers = localStorage.getItem('shroudit_custom_verifiers');
       if (customVerifiers) {
         const parsedVerifiers = JSON.parse(customVerifiers);
         setAllVerifiers([...VERIFIERS, ...parsedVerifiers]);
+      }
+
+      // 4. Load saved session if valid and verified
+      const savedSession = localStorage.getItem('shroudit_active_session');
+      if (savedSession) {
+        const parsed = JSON.parse(savedSession);
+        if (parsed.role) setCurrentRole(parsed.role);
+        if (parsed.user) {
+          // Sync with the latest resident data in combinedResidents
+          const fresh = combinedResidents.find(r => r.id === parsed.user.id) || parsed.user;
+          // Only maintain citizen session if they are government verified
+          if (parsed.role !== 'resident' || fresh.isGovernmentVerified) {
+            setCurrentUser(fresh);
+          } else {
+            setCurrentUser(null);
+            setCurrentRole('guest');
+          }
+        }
       }
     } catch (err) {
       console.warn("Auth initialization notice:", err);
@@ -134,55 +182,87 @@ export function AuthProvider({ children }) {
     setCurrentRole(role);
     setCurrentUser(user);
     try {
-      localStorage.setItem('shroudit_active_session', JSON.stringify({ role, user }));
+      if (user) {
+        localStorage.setItem('shroudit_active_session', JSON.stringify({ role, user }));
+      } else {
+        localStorage.removeItem('shroudit_active_session');
+      }
+    } catch (e) {}
+  };
+
+  // Logout
+  const logout = () => {
+    setCurrentUser(null);
+    setCurrentRole('guest');
+    try {
+      localStorage.removeItem('shroudit_active_session');
     } catch (e) {}
   };
 
   // --- RESIDENT AUTHENTICATION ---
-  const loginAsResident = (residentObj) => {
-    saveSession('resident', residentObj);
+  // Core Rule: Accounts ONLY become valid once they have government certification.
+  // Otherwise, user cannot log in and receives: "not verified by government".
+  const loginAsResident = (residentOrIdentifier) => {
+    let target = null;
+    if (typeof residentOrIdentifier === 'string') {
+      const query = residentOrIdentifier.trim().toLowerCase();
+      target = allResidents.find(r => 
+        r.id === residentOrIdentifier || 
+        (r.username && r.username.toLowerCase() === query) ||
+        (r.nationalId && r.nationalId.toLowerCase() === query) ||
+        (r.name && r.name.toLowerCase() === query)
+      );
+    } else if (residentOrIdentifier && typeof residentOrIdentifier === 'object') {
+      target = allResidents.find(r => r.id === residentOrIdentifier.id) || residentOrIdentifier;
+    }
+
+    if (!target) {
+      return {
+        success: false,
+        error: "Citizen account not found. Please create an account first."
+      };
+    }
+
+    // STRICT VERIFICATION CHECK:
+    const isVerified = target.isGovernmentVerified === true || (Array.isArray(target.certifications) && target.certifications.length > 0);
+    if (!isVerified) {
+      return {
+        success: false,
+        error: "not verified by government",
+        message: "not verified by government. Your account has been registered, but cannot log in until an accredited government department issues an official certification.",
+        resident: target
+      };
+    }
+
+    saveSession('resident', target);
+    return {
+      success: true,
+      resident: target
+    };
   };
 
-  const createCustomResident = ({ name, dob, domicile, nationalId, isStudent }) => {
+  // Option to create as many citizen accounts as possible.
+  // Newly created accounts start as unverified (pending government certification).
+  const createCustomResident = ({ name, username, dob, domicile, nationalId, isStudent }) => {
     const hwKey = generateDeviceHardwareKey();
     const cleanDid = `did:key:z6Mk${hwKey.publicKeyHex.substring(0, 10)}...${hwKey.publicKeyHex.substring(56)}`;
+    const cleanUsername = (username || name.toLowerCase().replace(/[^a-z0-9]/g, '')).trim();
     
     const newResident = {
-      id: `res-${Date.now().toString(36)}`,
-      name,
+      id: `res-${Date.now().toString(36)}-${Math.floor(Math.random() * 1000)}`,
+      username: cleanUsername,
+      name: name.trim(),
       dob: dob || "2000-01-01",
       domicile: domicile || "Bengaluru Urban",
       nationalId: nationalId || `IN-BLR-RES-${Math.floor(100000 + Math.random() * 900000)}`,
       isStudent: !!isStudent,
+      isGovernmentVerified: false,
+      status: "PENDING_GOV_VERIFICATION",
+      certifications: [],
       hardwareKey: hwKey,
-      did: cleanDid
+      did: cleanDid,
+      createdAt: new Date().toISOString()
     };
-
-    // Create an initial foundational civic identity credential for this new resident
-    const initialCard = {
-      id: `cred-${Date.now().toString(36)}`,
-      title: "Smart City Resident Identity",
-      issuer: "Center for e-Governance, Karnataka",
-      issuerDid: "did:shroud:gov-karnataka-ceg",
-      category: "Municipal Identity",
-      gradient: "from-cyan-900/80 via-slate-900 to-blue-950/80",
-      borderColor: "border-cyan-500/40",
-      glowColor: "cyan",
-      rawData: {
-        fullName: name,
-        nationalId: newResident.nationalId,
-        dob: newResident.dob,
-        domicile: newResident.domicile
-      },
-      predicates: [
-        { id: "over_18", label: "Age ≥ 18", statement: "Holder is 18 years of age or older", value: true },
-        { id: "blr_resident", label: "Bengaluru Resident", statement: `Holder resides in ${newResident.domicile}`, value: true },
-        ...(isStudent ? [{ id: "valid_student", label: "Student Concession", statement: "Enrolled student at recognized institution", value: true }] : [])
-      ]
-    };
-
-    saveCredential(initialCard);
-    setUserCredentials(prev => [initialCard, ...prev]);
 
     const updated = [...allResidents, newResident];
     setAllResidents(updated);
@@ -191,8 +271,73 @@ export function AuthProvider({ children }) {
       localStorage.setItem('shroudit_custom_residents', JSON.stringify([...storedCustom, newResident]));
     } catch (e) {}
 
-    saveSession('resident', newResident);
-    return newResident;
+    // Account created, but intentionally NOT logged in because it has not yet received a government certification!
+    return {
+      success: true,
+      resident: newResident,
+      message: "Citizen account created successfully. Status: Pending Government Verification."
+    };
+  };
+
+  // Government action: Selects a user and binds/sends an official certification to them.
+  // This turns their account to isGovernmentVerified: true, making it valid for login!
+  const bindGovernmentCertificationToUser = (residentId, credential) => {
+    const targetId = typeof residentId === 'object' ? residentId.id : residentId;
+    const targetResident = allResidents.find(r => r.id === targetId || r.did === targetId);
+
+    if (!targetResident) {
+      return {
+        success: false,
+        error: "Target citizen not found in directory."
+      };
+    }
+
+    const certRecord = {
+      id: credential?.id || `gov-cert-${Date.now().toString(36)}`,
+      title: credential?.title || "Government Certified Credential",
+      category: credential?.category || "Government Service",
+      issuer: credential?.issuer || "Center for e-Governance, Karnataka",
+      issuerDid: credential?.issuerDid || "did:shroud:gov-karnataka-ceg",
+      verifiedAt: new Date().toISOString(),
+      predicates: credential?.predicates || [],
+      rawData: credential?.rawData || {},
+      credentialData: credential
+    };
+
+    const existingCerts = Array.isArray(targetResident.certifications) ? targetResident.certifications : [];
+    const updatedResident = {
+      ...targetResident,
+      isGovernmentVerified: true,
+      status: "GOVERNMENT_VERIFIED",
+      verifiedAt: new Date().toISOString(),
+      certifications: [certRecord, ...existingCerts.filter(c => c.id !== certRecord.id)]
+    };
+
+    const updatedAll = allResidents.map(r => r.id === targetResident.id ? updatedResident : r);
+    setAllResidents(updatedAll);
+
+    // Save to localStorage
+    try {
+      const storedCustom = JSON.parse(localStorage.getItem('shroudit_custom_residents') || '[]');
+      const filtered = storedCustom.filter(r => r.id !== updatedResident.id);
+      localStorage.setItem('shroudit_custom_residents', JSON.stringify([...filtered, updatedResident]));
+    } catch (e) {}
+
+    // If currently logged-in user matches target, update session
+    if (currentUser?.id === updatedResident.id) {
+      saveSession('resident', updatedResident);
+    }
+
+    // Save credential to wallet storage
+    if (credential) {
+      saveCredential(credential);
+    }
+
+    return {
+      success: true,
+      resident: updatedResident,
+      credential: certRecord
+    };
   };
 
   // --- GOVERNMENT ISSUER AUTHENTICATION ---
@@ -381,6 +526,10 @@ export function AuthProvider({ children }) {
 
     saveCredential(newCard);
     setUserCredentials(prev => [newCard, ...prev]);
+
+    // Automatically bind certification and mark resident as government verified
+    bindGovernmentCertificationToUser(targetResident.id, newCard);
+
     return newCard;
   };
 
@@ -394,7 +543,9 @@ export function AuthProvider({ children }) {
       userCredentials,
       setUserCredentials,
       loginAsResident,
+      logout,
       createCustomResident,
+      bindGovernmentCertificationToUser,
       generateAuthorityChallenge,
       verifyAndLoginGovIssuer,
       accreditNewGovDepartment,

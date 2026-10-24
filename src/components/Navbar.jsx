@@ -1,10 +1,11 @@
 import React from 'react';
-import { NavLink, Link } from 'react-router-dom';
-import { Shield, Smartphone, Building2, Blocks, Cpu, Sparkles, RefreshCw, Layers, Landmark, UserCircle, FileCheck } from 'lucide-react';
+import { NavLink, Link, useNavigate } from 'react-router-dom';
+import { Shield, Smartphone, Building2, Blocks, Cpu, Sparkles, RefreshCw, Layers, Landmark, UserCircle, FileCheck, LogOut } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 
 export default function Navbar({ onResetDemo }) {
-  const { currentRole, currentUser } = useAuth();
+  const navigate = useNavigate();
+  const { currentRole, currentUser, logout } = useAuth();
 
   const navItems = [
     { to: '/wallet', label: 'Resident Wallet', icon: Smartphone, badge: 'PWA Holder' },
@@ -73,20 +74,37 @@ export default function Navbar({ onResetDemo }) {
           </nav>
 
           {/* Right Status Indicator & Persona Switcher */}
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2">
             <Link
               to="/login"
               className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700/80 hover:border-cyan-500/60 hover:bg-slate-800 transition-all text-xs"
-              title="Click to switch persona or register new identity"
+              title="Citizen Identity & Enclave Portal"
             >
               <UserCircle className="w-4 h-4 text-cyan-400 shrink-0" />
               <span className="font-semibold text-slate-200 truncate max-w-[130px] hidden sm:inline">
-                {currentUser?.name || "Sign In"}
+                {currentUser?.name || "Citizen Sign In"}
               </span>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 uppercase">
-                {currentRole}
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border uppercase ${
+                currentUser?.isGovernmentVerified
+                  ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                  : 'bg-cyan-950 text-cyan-300 border-cyan-800'
+              }`}>
+                {currentUser?.isGovernmentVerified ? 'Verified' : currentRole}
               </span>
             </Link>
+
+            {currentUser && (
+              <button
+                onClick={() => {
+                  logout();
+                  navigate('/login');
+                }}
+                className="p-2 rounded-xl bg-slate-900 border border-slate-700/80 hover:border-rose-500/60 hover:bg-rose-950/30 text-slate-400 hover:text-rose-400 transition-all"
+                title="Log Out of Citizen Account"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            )}
 
             <div className="hidden lg:flex items-center space-x-2 pl-2 border-l border-slate-800 text-[11px] font-mono text-slate-400">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>

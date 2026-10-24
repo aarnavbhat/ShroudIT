@@ -25,20 +25,48 @@ import {
   Train,
   Shield,
   Key,
-  Cpu
+  Cpu,
+  Send,
+  UserCheck,
+  BadgeCheck,
+  Landmark
 } from 'lucide-react';
 import { GOV_PUBLIC_KEY_BASE64, verifyGovernmentSignature } from '../lib/governmentSigner';
 import { analyzeDocumentAndGenerateCredential, analyzeDocumentWithAi } from '../lib/documentAiEngine';
 import { SAMPLE_GOV_DOCUMENTS } from '../lib/sampleGovernmentDocs';
 import { saveCredential } from '../lib/walletStorage';
+import { useAuth } from '../lib/authContext';
 
 export default function DocumentIngestionPage() {
   const navigate = useNavigate();
+  const auth = useAuth();
+  const allResidents = auth?.allResidents || [];
+  const bindGovernmentCertificationToUser = auth?.bindGovernmentCertificationToUser;
+  const loginAsResident = auth?.loginAsResident;
 
   const [uploadedFile, setUploadedFile] = useState(null);
   const [documentContent, setDocumentContent] = useState(null);
   const [rawTextJson, setRawTextJson] = useState('');
   const [selectedSampleId, setSelectedSampleId] = useState(null);
+
+  // Government citizen recipient selection state
+  const [selectedCitizenId, setSelectedCitizenId] = useState(() => {
+    const unverified = allResidents.find(r => !r.isGovernmentVerified);
+    return unverified ? unverified.id : (allResidents[0]?.id || 'res-priya');
+  });
+  const [certSentSuccess, setCertSentSuccess] = useState(null);
+  const [isSendingCert, setIsSendingCert] = useState(false);
+
+  // Automatically keep selected citizen aligned
+  useEffect(() => {
+    if (allResidents.length > 0) {
+      const exists = allResidents.some(r => r.id === selectedCitizenId);
+      if (!exists) {
+        const unverified = allResidents.find(r => !r.isGovernmentVerified);
+        setSelectedCitizenId(unverified ? unverified.id : allResidents[0].id);
+      }
+    }
+  }, [allResidents, selectedCitizenId]);
 
   // Gemini AI Engine configuration state
   const [geminiApiKey, setGeminiApiKey] = useState(() => {
@@ -209,6 +237,26 @@ export default function DocumentIngestionPage() {
     } catch (e) {
       console.error("Failed to save credential to wallet enclave:", e);
     }
+  };
+
+  // Government officer sends certification to selected citizen
+  const handleSendCertificationToCitizen = () => {
+    if (!generatedCredential || !selectedCitizenId) return;
+
+    setIsSendingCert(true);
+    const target = allResidents.find(r => r.id === selectedCitizenId);
+
+    setTimeout(() => {
+      if (bindGovernmentCertificationToUser) {
+        bindGovernmentCertificationToUser(selectedCitizenId, generatedCredential);
+      }
+      setIsSendingCert(false);
+      setCertSentSuccess({
+        citizen: target,
+        credential: generatedCredential,
+        timestamp: new Date().toLocaleTimeString()
+      });
+    }, 450);
   };
 
   // Download sample document as real JSON file to computer
@@ -664,6 +712,123 @@ export default function DocumentIngestionPage() {
                       </div>
                     ))}
                   </div>
+                </div>
+
+                {/* Step 3B: Government Citizen Recipient Dispatch Panel */}
+                <div className="pt-4 border-t border-slate-800 space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Landmark className="w-4 h-4 text-cyan-400" />
+                      <span className="text-xs font-bold text-white uppercase tracking-wider">
+                        Select Citizen Recipient & Issue Certification
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-bold">
+                      Authority Dispatch
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    The government body selects which citizen account should receive this official certification. Unverified accounts become accredited and authorized to log in.
+                  </p>
+
+                  {/* Citizen Selector List */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-slate-300 block">
+                      Choose Target Citizen Profile:
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
+                      {allResidents.map((res) => {
+                        const isSelected = selectedCitizenId === res.id;
+                        const isVerified = res.isGovernmentVerified === true || (Array.isArray(res.certifications) && res.certifications.length > 0);
+                        return (
+                          <div
+                            key={res.id}
+                            onClick={() => setSelectedCitizenId(res.id)}
+                            className={`p-2.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between text-left ${
+                              isSelected
+                                ? 'bg-cyan-950/70 border-cyan-400 ring-2 ring-cyan-500/50 shadow-md shadow-cyan-950/60'
+                                : 'bg-black/50 border-slate-800 hover:border-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-1">
+                              <div>
+                                <span className="text-xs font-bold text-white block">{res.name}</span>
+                                <span className="text-[10px] font-mono text-slate-400">@{res.username || res.id}</span>
+                              </div>
+                              {isVerified ? (
+                                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center space-x-0.5 font-bold shrink-0">
+                                  <BadgeCheck className="w-2.5 h-2.5" />
+                                  <span>Verified</span>
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800 flex items-center space-x-0.5 font-bold shrink-0">
+                                  <Lock className="w-2.5 h-2.5" />
+                                  <span>Unverified</span>
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-1.5 pt-1 border-t border-slate-800/60 text-[10px] text-slate-400 truncate">
+                              {res.domicile}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Dispatch Action Button */}
+                  <button
+                    type="button"
+                    onClick={handleSendCertificationToCitizen}
+                    disabled={isSendingCert || !selectedCitizenId}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-teal-500 to-blue-600 text-black font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-cyan-500/25 hover:brightness-110 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
+                  >
+                    {isSendingCert ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
+                        <span>Binding & Sending Government Certification...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" />
+                        <span>
+                          Send Certification to {allResidents.find(r => r.id === selectedCitizenId)?.name || "Selected Citizen"}
+                        </span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Confirmation Notice */}
+                  {certSentSuccess && (
+                    <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/70 text-emerald-200 space-y-2 animate-fadeIn">
+                      <div className="flex items-center space-x-2 font-bold text-white text-xs">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span>Certification Sent! Account is now Verified by Government</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300">
+                        <strong>{certSentSuccess.citizen.name}</strong> has received this official government credential. Their account is validated and they can now log in at the Citizen Login portal.
+                      </p>
+                      <div className="pt-1.5 flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={() => navigate('/login')}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs flex items-center space-x-1"
+                        >
+                          <UserCheck className="w-3.5 h-3.5" />
+                          <span>Go to Citizen Login</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (loginAsResident) loginAsResident(certSentSuccess.citizen);
+                            navigate('/wallet');
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-200 text-xs font-semibold"
+                        >
+                          Directly Open Wallet as {certSentSuccess.citizen.name}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Save to Resident Wallet CTA */}

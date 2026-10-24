@@ -480,4 +480,134 @@ describe("ShroudIT Dynamic Authentication, Government On-Chain Accreditation & M
       expect(notice.summary).to.include("PHH Welfare Beneficiary");
     });
   });
+
+  describe("10. Citizen Account Creation, Government Verification & Login Validation", function () {
+    // Model the exact authentication & government binding state engine
+    function createCitizenAccount({ name, username, dob, domicile, isStudent }) {
+      const hwKey = bbs.generateDeviceHardwareKey();
+      const cleanDid = `did:key:z6Mk${hwKey.publicKeyHex.substring(0, 10)}...${hwKey.publicKeyHex.substring(56)}`;
+      return {
+        id: `res-${Date.now().toString(36)}-${Math.floor(Math.random() * 1000)}`,
+        username: (username || name.toLowerCase().replace(/[^a-z0-9]/g, '')).trim(),
+        name: name.trim(),
+        dob: dob || "2000-01-01",
+        domicile: domicile || "Bengaluru Urban",
+        nationalId: `IN-BLR-RES-${Math.floor(100000 + Math.random() * 900000)}`,
+        isStudent: !!isStudent,
+        isGovernmentVerified: false,
+        status: "PENDING_GOV_VERIFICATION",
+        certifications: [],
+        hardwareKey: hwKey,
+        did: cleanDid,
+        createdAt: new Date().toISOString()
+      };
+    }
+
+    function attemptCitizenLogin(user) {
+      if (!user) {
+        return { success: false, error: "Citizen account not found." };
+      }
+      const isVerified = user.isGovernmentVerified === true || (Array.isArray(user.certifications) && user.certifications.length > 0);
+      if (!isVerified) {
+        return {
+          success: false,
+          error: "not verified by government",
+          message: "Account is not verified by government. An accredited authority must issue a certification before this account can log in."
+        };
+      }
+      return { success: true, user };
+    }
+
+    function bindGovernmentCertification(targetUser, credential) {
+      const certRecord = {
+        id: credential.id || `gov-cert-${Date.now().toString(36)}`,
+        title: credential.title || "Government Certified Credential",
+        category: credential.category || "Government Service",
+        issuer: credential.issuer || "Center for e-Governance, Karnataka",
+        issuerDid: credential.issuerDid || "did:shroud:gov-karnataka-ceg",
+        verifiedAt: new Date().toISOString(),
+        predicates: credential.predicates || []
+      };
+
+      return {
+        ...targetUser,
+        isGovernmentVerified: true,
+        status: "GOVERNMENT_VERIFIED",
+        certifications: [certRecord, ...(targetUser.certifications || [])]
+      };
+    }
+
+    it("should allow creating multiple citizen accounts with unverified status", function () {
+      const acc1 = createCitizenAccount({ name: "Aarushi Verma", username: "aarushi_v", domicile: "Mumbai, Maharashtra" });
+      const acc2 = createCitizenAccount({ name: "Kabir Mehta", username: "kabir_m", domicile: "Delhi NCR" });
+      const acc3 = createCitizenAccount({ name: "Divya Nair", username: "divya_n", domicile: "Kochi, Kerala" });
+
+      expect(acc1.isGovernmentVerified).to.equal(false);
+      expect(acc1.status).to.equal("PENDING_GOV_VERIFICATION");
+      expect(acc1.certifications).to.have.lengthOf(0);
+      expect(acc1.hardwareKey.publicKeyHex).to.be.a("string").with.lengthOf(64);
+
+      expect(acc2.isGovernmentVerified).to.equal(false);
+      expect(acc3.isGovernmentVerified).to.equal(false);
+      expect(acc1.did).to.not.equal(acc2.did);
+    });
+
+    it("should reject login attempt for unverified citizen with 'not verified by government'", function () {
+      const unverifiedCitizen = createCitizenAccount({ name: "Tarun Reddy", username: "tarun_r" });
+
+      const loginResult = attemptCitizenLogin(unverifiedCitizen);
+
+      expect(loginResult.success).to.equal(false);
+      expect(loginResult.error).to.equal("not verified by government");
+      expect(loginResult.message.toLowerCase()).to.include("not verified by government");
+    });
+
+    it("should allow government to select citizen, bind certification, and activate their account for login", function () {
+      // 1. Citizen registers
+      const citizen = createCitizenAccount({ name: "Suresh Patil", username: "suresh_p", domicile: "Hubballi, Karnataka" });
+      expect(attemptCitizenLogin(citizen).success).to.equal(false);
+
+      // 2. Government issues credential
+      const govIssuer = bbs.generateIssuerKeyPair();
+      const credential = {
+        id: "cred-karnataka-smart-city",
+        title: "Karnataka Smart City Domicile Certificate",
+        category: "Municipal Identity",
+        issuer: "Center for e-Governance, Karnataka",
+        issuerDid: "did:shroud:gov-karnataka-ceg",
+        predicates: [
+          { id: "over_18", label: "Age ≥ 18", statement: "Holder is 18 years or older", value: true },
+          { id: "karnataka_domicile", label: "Karnataka Domicile", statement: "Resident of Hubballi, Karnataka", value: true }
+        ]
+      };
+
+      // 3. Government binds certification to citizen
+      const certifiedCitizen = bindGovernmentCertification(citizen, credential);
+
+      expect(certifiedCitizen.isGovernmentVerified).to.equal(true);
+      expect(certifiedCitizen.status).to.equal("GOVERNMENT_VERIFIED");
+      expect(certifiedCitizen.certifications).to.have.lengthOf(1);
+      expect(certifiedCitizen.certifications[0].title).to.equal("Karnataka Smart City Domicile Certificate");
+
+      // 4. Citizen can now log in successfully!
+      const loginResult = attemptCitizenLogin(certifiedCitizen);
+      expect(loginResult.success).to.equal(true);
+      expect(loginResult.user.name).to.equal("Suresh Patil");
+      expect(loginResult.user.isGovernmentVerified).to.equal(true);
+    });
+
+    it("should ensure other unverified accounts remain blocked until specifically certified", function () {
+      const citizenA = createCitizenAccount({ name: "Citizen A", username: "cit_a" });
+      const citizenB = createCitizenAccount({ name: "Citizen B", username: "cit_b" });
+
+      // Government certifies only Citizen A
+      const certifiedA = bindGovernmentCertification(citizenA, { id: "cred-a", title: "Gov Cert A" });
+
+      expect(attemptCitizenLogin(certifiedA).success).to.equal(true);
+      // Citizen B must still be blocked
+      const attemptB = attemptCitizenLogin(citizenB);
+      expect(attemptB.success).to.equal(false);
+      expect(attemptB.error).to.equal("not verified by government");
+    });
+  });
 });
