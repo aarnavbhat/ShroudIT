@@ -22,11 +22,21 @@ import {
   Upload
 } from 'lucide-react';
 import { VERIFIERS, CREDENTIALS } from '../lib/mockData';
+import { useAuth } from '../lib/authContext';
 import { generateNonce, deriveBbsProof, verifyProof } from '../lib/cryptoSim';
 import CameraQrScannerModal from '../components/CameraQrScannerModal';
 
 export default function VerifierPage() {
-  const [selectedVerifierId, setSelectedVerifierId] = useState('verifier-library');
+  const auth = useAuth();
+  const currentRole = auth?.currentRole;
+  const currentUser = auth?.currentUser;
+  const allVerifiers = auth?.allVerifiers || VERIFIERS;
+
+  const initialVerifierId = (currentRole === 'verifier' && currentUser?.id) 
+    ? currentUser.id 
+    : 'verifier-library';
+
+  const [selectedVerifierId, setSelectedVerifierId] = useState(initialVerifierId);
   const [activeNonce, setActiveNonce] = useState(null);
   const [nonceTimeRemaining, setNonceTimeRemaining] = useState(180);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -34,7 +44,7 @@ export default function VerifierPage() {
   const [scanAnimationActive, setScanAnimationActive] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
 
-  const currentVerifier = VERIFIERS.find(v => v.id === selectedVerifierId) || VERIFIERS[0];
+  const currentVerifier = allVerifiers.find(v => v.id === selectedVerifierId) || allVerifiers[0] || VERIFIERS[0];
 
   useEffect(() => {
     handleNewNonce();
@@ -78,7 +88,7 @@ export default function VerifierPage() {
       // Auto-detect target verifier if presentation was bound to a specific registered city verifier
       const boundVerifier = (proof && (proof.verifierBinding || proof.v));
       if (boundVerifier && boundVerifier !== currentVerifier.did) {
-        const matchingVerifier = VERIFIERS.find(v => v.did === boundVerifier);
+        const matchingVerifier = allVerifiers.find(v => v.did === boundVerifier);
         if (matchingVerifier) {
           setSelectedVerifierId(matchingVerifier.id);
         }
@@ -160,7 +170,7 @@ export default function VerifierPage() {
 
         {/* Verifier Switcher Buttons */}
         <div className="flex flex-wrap gap-2">
-          {VERIFIERS.map((v) => (
+          {allVerifiers.map((v) => (
             <button
               key={v.id}
               onClick={() => setSelectedVerifierId(v.id)}

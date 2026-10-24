@@ -1,11 +1,15 @@
 import React from 'react';
 import { NavLink, Link } from 'react-router-dom';
-import { Shield, Smartphone, Building2, Blocks, Cpu, Sparkles, RefreshCw, Layers } from 'lucide-react';
+import { Shield, Smartphone, Building2, Blocks, Cpu, Sparkles, RefreshCw, Layers, Landmark, UserCircle } from 'lucide-react';
+import { useAuth } from '../lib/authContext';
 
 export default function Navbar({ onResetDemo }) {
+  const { currentRole, currentUser } = useAuth();
+
   const navItems = [
     { to: '/wallet', label: 'Resident Wallet', icon: Smartphone, badge: 'PWA Holder' },
     { to: '/verifier', label: 'City Verifier', icon: Building2, badge: 'OpenID4VP' },
+    ...(currentRole === 'issuer' ? [{ to: '/issuer', label: 'Issuer Studio', icon: Landmark, badge: 'Gov Mint' }] : []),
     { to: '/blockchain', label: 'Trust On-Chain', icon: Blocks, badge: 'Hardhat L2' },
     { to: '/auditor', label: 'AI Linkability Auditor', icon: Cpu, badge: 'Core Claim' },
   ];
@@ -68,11 +72,25 @@ export default function Navbar({ onResetDemo }) {
             })}
           </nav>
 
-          {/* Right Status Indicator */}
+          {/* Right Status Indicator & Persona Switcher */}
           <div className="flex items-center space-x-3">
-            <div className="hidden md:flex items-center space-x-2 pl-3 border-l border-slate-800 text-[11px] font-mono text-slate-400">
+            <Link
+              to="/login"
+              className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700/80 hover:border-cyan-500/60 hover:bg-slate-800 transition-all text-xs"
+              title="Click to switch persona or register new identity"
+            >
+              <UserCircle className="w-4 h-4 text-cyan-400 shrink-0" />
+              <span className="font-semibold text-slate-200 truncate max-w-[130px] hidden sm:inline">
+                {currentUser?.name || "Sign In"}
+              </span>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 uppercase">
+                {currentRole}
+              </span>
+            </Link>
+
+            <div className="hidden lg:flex items-center space-x-2 pl-2 border-l border-slate-800 text-[11px] font-mono text-slate-400">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>Epoch #142 Active</span>
+              <span>Epoch #142</span>
             </div>
           </div>
         </div>

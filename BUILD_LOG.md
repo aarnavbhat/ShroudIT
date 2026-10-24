@@ -120,3 +120,22 @@ This log tracks all project builds for phased GitHub commits during the ChronoFo
   - `README.md`: Complete presentation-grade repository documentation including architecture flowchart (Mermaid), DPDP Act 2023 statutory alignment, quickstart commands, and build milestone index.
   - Offline Resilience: Zero-configuration client fallback guarantees all features operate seamlessly whether local nodes and backend microservices are running or offline.
   - Total test suite now stands at **35/35 passing tests** across cryptography, smart contracts, backend microservices, AI anomaly models, and end-to-end integration. Production build clean in 6.77s.
+
+---
+
+## 🏷️ Build 9 (Completed)
+- **Tag / ID**: `build-9`
+- **Timestamp**: `2026-10-24`
+- **Description**: Dynamic multi-persona authentication, government on-chain challenge verification, and civic issuer studio.
+- **Milestone Scope**:
+  - `src/lib/authContext.jsx`: Dynamic multi-persona authentication provider (`AuthProvider`, `useAuth` hook) removing all hardcoded citizen and verifier details.
+  - **Persona 1: Citizens / Residents**: Choose pre-seeded profiles or dynamically create custom identities with arbitrary name, DOB, and jurisdiction. Generates a fresh device Ed25519 hardware keypair (`did:key:z6Mk...`) and mints an initial foundational civic identity card saved to encrypted IndexedDB storage.
+  - **Persona 2: Government Issuing Bodies**: Authenticate via on-chain DID challenge-response anchored in `IssuerRegistry.sol`. Municipal authorities can also accredit new departments with authentic BLS12-381 G2 keypairs and authorized schemas.
+  - **Persona 3: City Verifiers**: Choose from existing kiosks or register brand-new verification terminals under **DPDP Act §6**, defining lawful statutory purpose limitation statements, authorized predicates, and zero-retention policies.
+  - `src/pages/LoginPage.jsx`: 3-tab identity and governance portal allowing users to switch roles, verify on-chain challenges, create custom citizen profiles, accredit government authorities, or register new city terminals.
+  - `src/pages/IssuerStudioPage.jsx`: Dynamic government minting kiosk where authenticated government bodies digitally sign (BLS12-381 pairing multi-message BBS+) and deliver custom credentials (Transit Passes, Yuva Nidhi, Domicile Certificates, etc.) directly to any citizen recipient DID and encrypted local enclave.
+  - `src/components/Navbar.jsx`: Added interactive active persona badge (displaying user name/authority and role) with one-click access to `/login`, and added navigation to `/issuer` when logged in as a government issuer.
+  - `src/pages/WalletPage.jsx` & `src/pages/VerifierPage.jsx`: Refactored to dynamically bind holder name, domicile, DID, hardware key, and credentials from `useAuth`, and dynamically populate registered city verifier terminals.
+  - `test/auth.test.cjs`: Automated test suite covering resident creation, Ed25519 hardware key derivation, government DID challenge authentication, dynamic BLS12-381 credential issuance, and DPDP Act §6 purpose limitation enforcement (6/6 passing tests).
+  - Total test suite now stands at **41/41 passing tests**; clean production build in 5.83s.
+

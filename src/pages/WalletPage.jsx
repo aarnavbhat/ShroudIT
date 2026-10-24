@@ -27,6 +27,7 @@ import {
 import CredentialCard from '../components/CredentialCard';
 import ConsentExplainerModal from '../components/ConsentExplainerModal';
 import { CREDENTIALS, VERIFIERS, INITIAL_CONSENT_RECEIPTS } from '../lib/mockData';
+import { useAuth } from '../lib/authContext';
 import { deriveBbsProof, generateNonce } from '../lib/cryptoSim';
 import { 
   initWalletStorage, 
@@ -37,8 +38,13 @@ import {
 } from '../lib/walletStorage';
 
 export default function WalletPage() {
-  const [credentials, setCredentials] = useState(CREDENTIALS);
-  const [selectedCredId, setSelectedCredId] = useState(CREDENTIALS[0].id);
+  const auth = useAuth();
+  const currentUser = auth?.currentUser;
+  const allVerifiers = auth?.allVerifiers || VERIFIERS;
+  const userCredentials = auth?.userCredentials || CREDENTIALS;
+
+  const [credentials, setCredentials] = useState(userCredentials);
+  const [selectedCredId, setSelectedCredId] = useState(userCredentials[0]?.id || CREDENTIALS[0].id);
   const [selectedPredicates, setSelectedPredicates] = useState(["over_18", "blr_resident"]);
   const [selectedVerifierId, setSelectedVerifierId] = useState("verifier-library");
   
@@ -49,7 +55,7 @@ export default function WalletPage() {
   const [activeProof, setActiveProof] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [explainerOpen, setExplainerOpen] = useState(false);
-  const [explainerCred, setExplainerCred] = useState(CREDENTIALS[0]);
+  const [explainerCred, setExplainerCred] = useState(userCredentials[0] || CREDENTIALS[0]);
   const [overAskingTriggered, setOverAskingTriggered] = useState(false);
   const [receipts, setReceipts] = useState(INITIAL_CONSENT_RECEIPTS);
   const [copied, setCopied] = useState(false);
@@ -63,6 +69,10 @@ export default function WalletPage() {
       const storedReceipts = await getStoredReceipts();
       if (storedCreds && storedCreds.length > 0) {
         setCredentials(storedCreds);
+        setSelectedCredId(storedCreds[0].id);
+        if (storedCreds[0].predicates && storedCreds[0].predicates.length > 0) {
+          setSelectedPredicates(storedCreds[0].predicates.map(p => p.id));
+        }
       }
       if (storedReceipts && storedReceipts.length > 0) {
         setReceipts(storedReceipts);
@@ -70,10 +80,10 @@ export default function WalletPage() {
       setStorageInitialized(true);
     }
     loadWalletStorage();
-  }, []);
+  }, [userCredentials]);
 
-  const currentCred = credentials.find(c => c.id === selectedCredId) || credentials[0];
-  const currentVerifier = VERIFIERS.find(v => v.id === selectedVerifierId) || VERIFIERS[0];
+  const currentCred = credentials.find(c => c.id === selectedCredId) || credentials[0] || CREDENTIALS[0];
+  const currentVerifier = allVerifiers.find(v => v.id === selectedVerifierId) || allVerifiers[0] || VERIFIERS[0];
 
   const handleTogglePredicate = (predId) => {
     setSelectedPredicates(prev => 
@@ -253,7 +263,7 @@ export default function WalletPage() {
                 <div className="w-7 h-5 rounded border border-amber-400/40 bg-amber-500/20"></div>
               </div>
               <div className="text-xs text-slate-300 font-mono">
-                Holder: Aarav S. Rao
+                Holder: {currentUser?.name || "Aarav S. Rao"}
               </div>
               <div className="pt-2 border-t border-slate-800 flex justify-between text-[10px] text-slate-400">
                 <span>Predicates: {currentCred.predicates.length} Available</span>
@@ -330,13 +340,13 @@ export default function WalletPage() {
                 </div>
                 <div>
                   <div className="flex items-center space-x-2">
-                    <h2 className="text-base font-bold text-white">Resident: Aarav S. Rao</h2>
+                    <h2 className="text-base font-bold text-white">Resident: {currentUser?.name || "Aarav S. Rao"}</h2>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800">
-                      Bengaluru Urban Domicile
+                      {currentUser?.domicile || "Bengaluru Urban Domicile"}
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    DID: <span className="font-mono text-cyan-300">did:key:z6Mku7X...89p</span> | Device Hardware Key: <span className="font-mono text-slate-300">ed25519:e4:91...0d:66</span>
+                    DID: <span className="font-mono text-cyan-300">{currentUser?.did || "did:key:z6Mku7X...89p"}</span> | Device Hardware Key: <span className="font-mono text-slate-300">{currentUser?.hardwareKey?.publicKeyHex ? 'ed25519:' + currentUser.hardwareKey.publicKeyHex.substring(0, 10) + '...' : "ed25519:e4:91...0d:66"}</span>
                   </p>
                 </div>
               </div>
@@ -417,7 +427,7 @@ export default function WalletPage() {
                     onChange={(e) => setSelectedVerifierId(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
                   >
-                    {VERIFIERS.filter(v => v.isRegistered).map(v => (
+                    {allVerifiers.filter(v => v.isRegistered).map(v => (
                       <option key={v.id} value={v.id}>{v.name} ({v.purposeId})</option>
                     ))}
                   </select>
