@@ -13,11 +13,27 @@ import { GOV_PUBLIC_KEY_BASE64 } from './governmentSigner.js';
  * Extracts numeric annual income from structured document or text
  */
 export function extractAnnualIncome(doc) {
-  if (typeof doc.annualIncome === 'number') return doc.annualIncome;
-  if (typeof doc.income === 'number') return doc.income;
-  if (typeof doc.annual_income === 'number') return doc.annual_income;
+  if (typeof doc !== 'object' || doc === null) {
+    if (typeof doc === 'number') return doc;
+    doc = {};
+  }
 
-  const text = typeof doc === 'string' ? doc : JSON.stringify(doc);
+  // Check structured properties first (numbers or formatted currency strings)
+  for (const field of ['annualIncome', 'income', 'annual_income', 'salary', 'ctc']) {
+    if (typeof doc[field] === 'number') return doc[field];
+    if (typeof doc[field] === 'string') {
+      const clean = doc[field].replace(/[₹,$\s]/g, '');
+      const parsed = parseFloat(clean);
+      if (!isNaN(parsed) && parsed > 0) {
+        if (/lakh|lakhs|lac|lacs/i.test(doc[field])) return parsed * 100000;
+        return parsed;
+      }
+    }
+  }
+
+  const raw = typeof doc === 'string' ? doc : JSON.stringify(doc);
+  // Strip commas between digits: e.g. "4,50,000" -> "450000", "2,40,000" -> "240000"
+  const text = raw.replace(/(?<=\d),(?=\d)/g, '');
 
   // Check for Lakhs / Lacs format (e.g., 4.5 Lakhs, 3 lacs)
   const lakhMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:lakh|lakhs|lac|lacs)/i);
@@ -58,6 +74,19 @@ export function analyzeDocumentAndGenerateCredential({ document, verificationMet
   const text = typeof document === 'string' ? document : JSON.stringify(document);
   const docObj = typeof document === 'object' && document !== null ? document : {};
 
+  // If document was produced by Text Signing Lab, extract inner payload from docObj.text
+  let effectiveDoc = docObj;
+  if (typeof docObj.text === 'string') {
+    try {
+      const parsedText = JSON.parse(docObj.text);
+      if (typeof parsedText === 'object' && parsedText !== null) {
+        effectiveDoc = { ...docObj, ...parsedText };
+      }
+    } catch (e) {
+      effectiveDoc = { ...docObj, rawText: docObj.text };
+    }
+  }
+
   const allowedPredicates = [];
   const disqualifiedCategories = [];
   const aiDecisions = [];
@@ -68,13 +97,16 @@ export function analyzeDocumentAndGenerateCredential({ document, verificationMet
   let iconName = "Shield";
   let themeColor = "cyan";
 
-  const isIncomeDoc = /income|asset|welfare|stipend|yuva|bpl|ews/i.test(text);
-  const isStudentDoc = /student|college|university|metro|transit|enrollment/i.test(text);
-  const isCyberDoc = /cyber|security|analyst|kdem|cryptographic|cert/i.test(text);
-  const isDomicileDoc = /domicile|resident|bbmp|karnataka/i.test(text);
+  // Combine full text context for keyword analysis
+  const fullText = text + ' ' + (typeof docObj.text === 'string' ? docObj.text : '');
+
+  const isIncomeDoc = /\b(income|asset|welfare|stipend|yuva|bpl|ews|salary|ctc)\b/i.test(fullText);
+  const isStudentDoc = /\b(student|college|university|metro|transit|enrollment|school|tuition)\b/i.test(fullText);
+  const isCyberDoc = /\b(cyber|cybersecurity|infosec|kdem|comptia|cisp)\b|security\s*analyst/i.test(fullText);
+  const isDomicileDoc = /\b(domicile|resident|bbmp|karnataka|bengaluru|bangalore)\b/i.test(fullText);
 
   // 1. EVALUATE INCOME CRITERIA
-  const detectedIncome = extractAnnualIncome(docObj);
+  const detectedIncome = extractAnnualIncome(effectiveDoc);
   if (detectedIncome !== null || isIncomeDoc) {
     docHeading = "Verified Government Income & Asset Certificate";
     docCategory = "Socio-Economic Welfare Eligibility";
@@ -143,7 +175,7 @@ export function analyzeDocumentAndGenerateCredential({ document, verificationMet
       label: "Accredited Student",
       statement: "Enrolled in recognized educational institution",
       value: true,
-      derivedFrom: docObj.college || docObj.institution || "Enrolled College"
+      derivedFrom: effectiveDoc.college || effectiveDoc.institution || "Enrolled College"
     });
     allowedPredicates.push({
       id: "tier1_concession",
@@ -170,21 +202,21 @@ export function analyzeDocumentAndGenerateCredential({ document, verificationMet
       label: "Certified Cybersecurity Analyst",
       statement: "Holder holds accredited Level 5 Cybersecurity Certification",
       value: true,
-      derivedFrom: docObj.grade || "Distinction (Level 5)"
+      derivedFrom: effectiveDoc.grade || "Distinction (Level 5)"
     });
     allowedPredicates.push({
       id: "cert_valid_2026",
       label: "Valid Skill Attestation",
       statement: "Certification is active through 2026",
       value: true,
-      derivedFrom: docObj.validUntil || "2026-12-31"
+      derivedFrom: effectiveDoc.validUntil || "2026-12-31"
     });
 
     aiDecisions.push("Technical certification: Level 5 Cybersecurity Analyst qualification confirmed. Generated skill attestation predicates.");
   }
 
   // 4. EVALUATE AGE & DOMICILE CRITERIA
-  const dob = docObj.dob || docObj.dateOfBirth || docObj.birthDate || "2003-08-14";
+  const dob = effectiveDoc.dob || effectiveDoc.dateOfBirth || effectiveDoc.birthDate || "2003-08-14";
   const age = calculateAge(dob);
 
   if (age !== null && age >= 18) {
@@ -213,7 +245,7 @@ export function analyzeDocumentAndGenerateCredential({ document, verificationMet
   }
 
   // Domicile check
-  const domicileStr = docObj.domicile || docObj.address || docObj.jurisdiction || "Bengaluru Urban, Karnataka";
+  const domicileStr = effectiveDoc.domicile || effectiveDoc.address || effectiveDoc.jurisdiction || "Bengaluru Urban, Karnataka";
   if (/bengaluru|bangalore|bbmp/i.test(domicileStr)) {
     allowedPredicates.push({
       id: "blr_resident",
@@ -246,17 +278,17 @@ export function analyzeDocumentAndGenerateCredential({ document, verificationMet
     sourceDocumentTitle: docHeading,
     status: "Active (AI Verified)",
     expiryDate: "2027-12-31",
-    issuer: docObj.issuer || verificationMeta.issuerAuthority || "Government of Karnataka",
+    issuer: effectiveDoc.issuer || verificationMeta.issuerAuthority || "Government of Karnataka",
     issuerDid: "did:cv:gov-accredited-authority",
-    documentNumber: docObj.documentNumber || `KA-GOV-${Date.now().toString().slice(-6)}`,
+    documentNumber: effectiveDoc.documentNumber || `KA-GOV-${Date.now().toString().slice(-6)}`,
     verifiedAt: verificationMeta.verifiedAt || new Date().toISOString(),
     verifiedByPublicKey: GOV_PUBLIC_KEY_BASE64,
     rawData: {
-      fullName: docObj.issuedTo || docObj.holderName || "Aarav S. Rao",
-      nationalId: docObj.nationalId || "XXXX-XXXX-9948",
+      fullName: effectiveDoc.issuedTo || effectiveDoc.holderName || "Aarav S. Rao",
+      nationalId: effectiveDoc.nationalId || "XXXX-XXXX-9948",
       dob: dob,
       domicile: domicileStr,
-      ...docObj
+      ...effectiveDoc
     },
     // ONLY GENERATE THE OPTIONS HE IS ELIGIBLE FOR!
     predicates: allowedPredicates,

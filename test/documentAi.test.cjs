@@ -226,4 +226,69 @@ describe("Government Document Cryptographic Verification & AI Purpose Limitation
       expect(der2[0]).to.equal(0x30);
     });
   });
+
+  describe("5. Text Signing Lab Document Integration & AI Categorization", function () {
+    it("should parse and categorize a signed record where document is inside record.text (JSON string)", function () {
+      const innerJson = JSON.stringify({
+        documentType: "Income and Asset Certificate",
+        annualIncome: 420000,
+        issuedTo: "Aarav S. Rao",
+        domicile: "Bengaluru Urban, Karnataka"
+      });
+
+      const labRecord = {
+        algorithm: "ECDSA-P256-SHA256",
+        text: innerJson,
+        signatureBase64: "MEQCIB8Z3s7j12345678901234567890123456789012AiB/123456789012345678901234567890123456789012==",
+        publicKeyPem: `-----BEGIN PUBLIC KEY-----\n${govSigner.GOV_PUBLIC_KEY_BASE64}\n-----END PUBLIC KEY-----`
+      };
+
+      const credential = docAi.analyzeDocumentAndGenerateCredential({
+        document: labRecord,
+        verificationMeta: { valid: true }
+      });
+
+      expect(credential.title).to.equal("Verified Government Income & Asset Certificate");
+      const predicateIds = credential.predicates.map(p => p.id);
+      expect(predicateIds).to.not.include("income_below_3L");
+      expect(predicateIds).to.include("income_tax_assessed");
+      // Must not leak cybersecurity predicates
+      expect(predicateIds).to.not.include("certified_analyst");
+    });
+
+    it("should parse plain text documents with comma-separated currency values (e.g. ₹4,50,000)", function () {
+      const labRecord = {
+        algorithm: "ECDSA-P256-SHA256",
+        text: "Income Attestation Certificate: Citizen Aarav S. Rao has annual family income of ₹4,50,000. Domicile: Bengaluru Urban.",
+        signatureBase64: "MEQCIB8Z3s7j12345678901234567890123456789012AiB/123456789012345678901234567890123456789012=="
+      };
+
+      const income = docAi.extractAnnualIncome(labRecord);
+      expect(income).to.equal(450000);
+
+      const credential = docAi.analyzeDocumentAndGenerateCredential({
+        document: labRecord,
+        verificationMeta: { valid: true }
+      });
+
+      const predicateIds = credential.predicates.map(p => p.id);
+      expect(predicateIds).to.not.include("income_below_3L");
+      expect(predicateIds).to.include("income_tax_assessed");
+      expect(predicateIds).to.not.include("certified_analyst");
+    });
+
+    it("should reject documents with unaccredited public key in publicKeyPem", async function () {
+      const fakeKeyPem = "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfakefakefakefakefakefakefakefakefakefakefakefakefakefakefakefakefakefakefakefakefakefake==\n-----END PUBLIC KEY-----";
+      const tamperedRecord = {
+        algorithm: "ECDSA-P256-SHA256",
+        text: "Government Certificate",
+        signatureBase64: "MEQCIB8Z3s7j12345678901234567890123456789012AiB/123456789012345678901234567890123456789012==",
+        publicKeyPem: fakeKeyPem
+      };
+
+      const result = await govSigner.verifyGovernmentSignature(tamperedRecord);
+      expect(result.valid).to.equal(false);
+      expect(result.reason).to.include("Public Key Accreditation Mismatch");
+    });
+  });
 });

@@ -295,10 +295,10 @@ export async function verifyGovernmentSignature(documentData, explicitSignature 
 
   // 1. Locate the signature from any possible location in document
   let rawSig = explicitSignature || 
+    docObj.signatureBase64 ||
     docObj.signature || 
     docObj.sig || 
     docObj.signatureHex || 
-    docObj.signatureBase64 ||
     docObj.signature_der ||
     docObj.signature_raw ||
     docObj.digitalSignature ||
@@ -323,6 +323,23 @@ export async function verifyGovernmentSignature(documentData, explicitSignature 
       algorithm: "ECDSA-P256-SHA256",
       publicKey: GOV_PUBLIC_KEY_BASE64
     };
+  }
+
+  // Check 0: If record explicitly includes a public key PEM, verify it matches the accredited key
+  const attachedKeyPem = docObj.publicKeyPem || docObj.publicKey || docObj.public_key;
+  if (typeof attachedKeyPem === 'string') {
+    const cleanAttached = attachedKeyPem
+      .replace(/-----BEGIN [^-]+-----/g, '')
+      .replace(/-----END [^-]+-----/g, '')
+      .replace(/[\r\n\s]/g, '');
+    if (cleanAttached && cleanAttached !== GOV_PUBLIC_KEY_BASE64) {
+      return {
+        valid: false,
+        reason: `Public Key Accreditation Mismatch: The document public key (${cleanAttached.substring(0, 16)}...) does not match the official accredited Government Authority key (${GOV_PUBLIC_KEY_BASE64.substring(0, 16)}...). Under DPDP Act §6, documents signed with unaccredited private keys cannot be verified.`,
+        algorithm: "ECDSA-P256-SHA256",
+        publicKey: GOV_PUBLIC_KEY_BASE64
+      };
+    }
   }
 
   // Check 1: Official government authority seal token (for pre-signed authorized sample templates)
@@ -356,6 +373,28 @@ export async function verifyGovernmentSignature(documentData, explicitSignature 
   // Collect candidate payloads for verification (covers all common signing styles)
   const candidateTexts = new Set();
   const cleanDoc = stripSignatureFields(docObj);
+
+  // Candidate: If signed via Text Signing Lab (record.text)
+  if (typeof docObj.text === 'string') {
+    candidateTexts.add(docObj.text);
+    candidateTexts.add(docObj.text.trim());
+    candidateTexts.add(docObj.text.replace(/\r\n/g, '\n'));
+    candidateTexts.add(docObj.text.replace(/\r\n/g, '\n').trim());
+    candidateTexts.add(docObj.text.replace(/\r/g, ''));
+    try {
+      const parsedText = JSON.parse(docObj.text);
+      if (typeof parsedText === 'object' && parsedText !== null) {
+        candidateTexts.add(canonicalizeDocument(parsedText));
+        candidateTexts.add(JSON.stringify(parsedText));
+      }
+    } catch (e) {}
+  }
+  if (typeof docObj.documentText === 'string') {
+    candidateTexts.add(docObj.documentText);
+    candidateTexts.add(docObj.documentText.trim());
+    candidateTexts.add(docObj.documentText.replace(/\r\n/g, '\n'));
+    candidateTexts.add(docObj.documentText.replace(/\r\n/g, '\n').trim());
+  }
 
   // Candidate 1: Standard canonical JSON (sorted keys, no whitespace)
   candidateTexts.add(canonicalizeDocument(docObj));
