@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   FileCheck, 
@@ -13,6 +13,7 @@ import {
   ArrowRight, 
   Download, 
   Eye, 
+  EyeOff,
   Layers, 
   Lock,
   FileText,
@@ -22,10 +23,12 @@ import {
   Award,
   BadgePercent,
   Train,
-  Shield
+  Shield,
+  Key,
+  Cpu
 } from 'lucide-react';
 import { GOV_PUBLIC_KEY_BASE64, verifyGovernmentSignature } from '../lib/governmentSigner';
-import { analyzeDocumentAndGenerateCredential } from '../lib/documentAiEngine';
+import { analyzeDocumentAndGenerateCredential, analyzeDocumentWithAi } from '../lib/documentAiEngine';
 import { SAMPLE_GOV_DOCUMENTS } from '../lib/sampleGovernmentDocs';
 import { saveCredential } from '../lib/walletStorage';
 
@@ -37,12 +40,54 @@ export default function DocumentIngestionPage() {
   const [rawTextJson, setRawTextJson] = useState('');
   const [selectedSampleId, setSelectedSampleId] = useState(null);
 
+  // Gemini AI Engine configuration state
+  const [geminiApiKey, setGeminiApiKey] = useState(() => {
+    try {
+      return localStorage.getItem('shroudit_gemini_api_key') || '';
+    } catch (e) {
+      return '';
+    }
+  });
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [keySavedNotice, setKeySavedNotice] = useState(false);
+  const [serverHasGemini, setServerHasGemini] = useState(false);
+  const [aiProcessingStatus, setAiProcessingStatus] = useState('');
+
   // Verification & AI processing state
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState(null);
   const [generatedCredential, setGeneratedCredential] = useState(null);
   const [copiedKey, setCopiedKey] = useState(false);
   const [isSavedToWallet, setIsSavedToWallet] = useState(false);
+
+  // Check backend Gemini status on mount
+  useEffect(() => {
+    fetch('http://localhost:4000/api/ai/status')
+      .then(res => res.json())
+      .then(data => {
+        if (data.geminiConfigured) {
+          setServerHasGemini(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Save Gemini API key to local storage
+  const handleSaveApiKey = () => {
+    try {
+      localStorage.setItem('shroudit_gemini_api_key', geminiApiKey.trim());
+      setKeySavedNotice(true);
+      setTimeout(() => setKeySavedNotice(false), 2500);
+    } catch (e) {}
+  };
+
+  // Clear Gemini API key
+  const handleClearApiKey = () => {
+    try {
+      localStorage.removeItem('shroudit_gemini_api_key');
+      setGeminiApiKey('');
+    } catch (e) {}
+  };
 
   // Copy Govt Public Key
   const handleCopyKey = () => {
@@ -87,16 +132,16 @@ export default function DocumentIngestionPage() {
     setIsSavedToWallet(false);
   };
 
-  // Run Cryptographic Verification + AI Categorization Pipeline
+  // Run Cryptographic Verification + Gemini AI Purpose Limitation Pipeline
   const handleVerifyAndAnalyze = async () => {
     if (!documentContent) return;
 
     setIsVerifying(true);
+    setAiProcessingStatus("Authenticating Government Cryptographic Signature (ECDSA P-256)...");
     setVerificationResult(null);
     setGeneratedCredential(null);
 
-    // Simulate brief cryptographic check delay for UX feedback
-    setTimeout(async () => {
+    try {
       // 1. Cryptographic Signature Verification against Government Public Key
       const sigCheck = await verifyGovernmentSignature(documentContent, null, rawTextJson);
 
@@ -108,15 +153,9 @@ export default function DocumentIngestionPage() {
           publicKey: sigCheck.publicKey
         });
         setIsVerifying(false);
+        setAiProcessingStatus('');
         return;
       }
-
-      // 2. AI Categorization & Purpose Limitation Engine
-      // Evaluates categories person is eligible for (e.g. blocks income < 3L if income > 3L)
-      const credCard = analyzeDocumentAndGenerateCredential({
-        document: documentContent,
-        verificationMeta: sigCheck
-      });
 
       setVerificationResult({
         valid: true,
@@ -128,9 +167,28 @@ export default function DocumentIngestionPage() {
         issuerAuthority: sigCheck.issuerAuthority
       });
 
+      // 2. Real AI Categorization & Purpose Limitation via Google Gemini
+      const activeKey = geminiApiKey?.trim() || null;
+      setAiProcessingStatus(
+        activeKey || serverHasGemini
+          ? "Prompting Google Gemini 2.5 Flash to comprehend document & decide eligible categories..."
+          : "Evaluating document eligibility & DPDP Act §6 statutory rules..."
+      );
+
+      const credCard = await analyzeDocumentWithAi({
+        document: documentContent,
+        verificationMeta: sigCheck,
+        geminiApiKey: activeKey,
+        rawText: rawTextJson
+      });
+
       setGeneratedCredential(credCard);
+    } catch (err) {
+      console.error("Verification and AI processing error:", err);
+    } finally {
       setIsVerifying(false);
-    }, 600);
+      setAiProcessingStatus('');
+    }
   };
 
   // Save dynamically generated credential tab to Resident Wallet
@@ -220,6 +278,88 @@ export default function DocumentIngestionPage() {
         </div>
         <div className="p-2.5 rounded-xl bg-black/60 font-mono text-[11px] text-cyan-300/90 break-all select-all border border-slate-800">
           {GOV_PUBLIC_KEY_BASE64}
+        </div>
+      </div>
+
+      {/* Google Gemini AI Purpose Limitation Engine Configuration Bar */}
+      <div className="rounded-2xl glass-panel p-4 border border-violet-500/30 bg-violet-950/20 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-8 h-8 rounded-lg bg-violet-900/60 border border-violet-500/40 flex items-center justify-center text-violet-300 shrink-0">
+              <Sparkles className="w-4 h-4 text-violet-300" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-xs font-bold text-white uppercase tracking-wider block">
+                  Google Gemini 2.5 Flash Purpose Limitation Engine
+                </span>
+                {(geminiApiKey || serverHasGemini) ? (
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center space-x-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>Live LLM Connected</span>
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-800">
+                    Awaiting Gemini API Key
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Gemini dynamically analyzes uploaded files, comprehends income & qualifications, and decides which categories & ZK-predicates to form under DPDP Act §6.
+              </p>
+            </div>
+          </div>
+
+          {keySavedNotice && (
+            <span className="text-xs text-emerald-400 font-mono flex items-center space-x-1 shrink-0">
+              <Check className="w-3.5 h-3.5" />
+              <span>Key saved to local session!</span>
+            </span>
+          )}
+        </div>
+
+        {/* API Key Input Field */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1 border-t border-violet-900/40">
+          <div className="relative flex-1">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+              <Key className="w-3.5 h-3.5" />
+            </div>
+            <input
+              type={showApiKey ? 'text' : 'password'}
+              value={geminiApiKey}
+              onChange={(e) => setGeminiApiKey(e.target.value)}
+              placeholder="Paste Google Gemini API Key (e.g. AIzaSy...)"
+              className="w-full pl-9 pr-10 py-2 rounded-xl text-xs font-mono bg-black/60 border border-slate-800 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500"
+            />
+            <button
+              type="button"
+              onClick={() => setShowApiKey(!showApiKey)}
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-slate-300"
+            >
+              {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+
+          <div className="flex items-center space-x-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleSaveApiKey}
+              className="px-3.5 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs transition-colors flex items-center space-x-1"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Save Key</span>
+            </button>
+            {geminiApiKey && (
+              <button
+                type="button"
+                onClick={handleClearApiKey}
+                className="px-2.5 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-400 hover:text-rose-400 text-xs transition-colors"
+                title="Clear Key"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -337,7 +477,7 @@ export default function DocumentIngestionPage() {
               {isVerifying ? (
                 <>
                   <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-                  <span>Verifying P-256 Signature & Evaluating AI Rules...</span>
+                  <span>{aiProcessingStatus || "Verifying P-256 Signature & Evaluating AI Rules..."}</span>
                 </>
               ) : (
                 <>
@@ -435,10 +575,18 @@ export default function DocumentIngestionPage() {
                     <Sparkles className="w-4 h-4 text-cyan-400" />
                     <span>AI Purpose Limitation & Categorization Decision</span>
                   </span>
-                  <span className="text-[10px] font-mono text-cyan-400">
-                    DPDP Act §6 Compliant
+                  <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800 flex items-center space-x-1">
+                    <Cpu className="w-3 h-3 text-cyan-400" />
+                    <span>{generatedCredential.aiEngine || "DPDP Act §6 Compliant"}</span>
                   </span>
                 </div>
+
+                {generatedCredential.rawData?.summary && (
+                  <div className="p-3 rounded-xl bg-violet-950/20 border border-violet-800/40 text-xs text-violet-200">
+                    <strong className="text-violet-300 block mb-0.5">AI Synthesis:</strong>
+                    {generatedCredential.rawData.summary}
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   {generatedCredential.aiAuditReport.decisions.map((dec, idx) => (
@@ -469,9 +617,17 @@ export default function DocumentIngestionPage() {
               <div className="rounded-2xl glass-panel-glow p-6 border border-cyan-500/40 bg-slate-900/90 space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                   <div>
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 block font-bold">
-                      Generated Credential Tab
-                    </span>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 font-bold">
+                        Generated Credential Tab
+                      </span>
+                      {generatedCredential.aiEngine && generatedCredential.aiEngine.includes('Gemini') && (
+                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-violet-950 text-violet-300 border border-violet-800 flex items-center space-x-1">
+                          <Sparkles className="w-2.5 h-2.5 text-violet-400" />
+                          <span>Gemini Live Reasoned</span>
+                        </span>
+                      )}
+                    </div>
                     <h3 className="text-base font-extrabold text-white mt-0.5">
                       {generatedCredential.title}
                     </h3>

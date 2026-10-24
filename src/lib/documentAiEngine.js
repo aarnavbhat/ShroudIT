@@ -8,6 +8,7 @@
  */
 
 import { GOV_PUBLIC_KEY_BASE64 } from './governmentSigner.js';
+import { queryGeminiDocumentAnalysis } from './geminiAiService.js';
 
 /**
  * Extracts numeric annual income from structured document or text
@@ -70,7 +71,7 @@ export function calculateAge(dobStr) {
  * Analyzes a cryptographically verified government document using AI eligibility rules.
  * Generates ONLY the categories and zero-knowledge options the person is legally eligible for.
  */
-export function analyzeDocumentAndGenerateCredential({ document, verificationMeta = {} }) {
+export function analyzeDocumentAndGenerateCredential({ document, verificationMeta = {}, geminiResult = null }) {
   const text = typeof document === 'string' ? document : JSON.stringify(document);
   const docObj = typeof document === 'object' && document !== null ? document : {};
 
@@ -85,6 +86,51 @@ export function analyzeDocumentAndGenerateCredential({ document, verificationMet
     } catch (e) {
       effectiveDoc = { ...docObj, rawText: docObj.text };
     }
+  }
+
+  // If Gemini live analysis is available, use Gemini's dynamic decisions
+  if (geminiResult && geminiResult.data) {
+    const aiData = geminiResult.data;
+    const uniqueId = `cred-gemini-${Date.now().toString(36)}`;
+    const allowed = Array.isArray(aiData.allowedPredicates) ? aiData.allowedPredicates : [];
+    const disqualified = Array.isArray(aiData.disqualifiedCategories) ? aiData.disqualifiedCategories : [];
+    const decisions = Array.isArray(aiData.aiDecisions) ? aiData.aiDecisions : [];
+    const modelName = geminiResult.model || 'gemini-2.5-flash';
+
+    return {
+      id: uniqueId,
+      title: aiData.title || "Government Verified Civic Certificate",
+      category: aiData.category || "General Civic Attestation",
+      icon: "Sparkles",
+      color: "cyan",
+      badgeColor: "cyan",
+      isAiGenerated: true,
+      aiEngine: `Google Gemini (${modelName})`,
+      verifiedDocument: true,
+      sourceDocumentTitle: aiData.title || "Verified Document",
+      status: `Active (Verified by Gemini AI)`,
+      expiryDate: "2027-12-31",
+      issuer: aiData.issuer || effectiveDoc.issuer || verificationMeta.issuerAuthority || "Government of Karnataka",
+      issuerDid: "did:cv:gov-accredited-authority",
+      documentNumber: aiData.documentNumber || effectiveDoc.documentNumber || `KA-GOV-${Date.now().toString().slice(-6)}`,
+      verifiedAt: verificationMeta.verifiedAt || new Date().toISOString(),
+      verifiedByPublicKey: GOV_PUBLIC_KEY_BASE64,
+      rawData: {
+        fullName: aiData.holderName || effectiveDoc.issuedTo || effectiveDoc.holderName || "Aarav S. Rao",
+        nationalId: effectiveDoc.nationalId || "XXXX-XXXX-9948",
+        summary: aiData.summary,
+        ...effectiveDoc
+      },
+      predicates: allowed,
+      aiAuditReport: {
+        aiEngine: `Google Gemini (${modelName})`,
+        eligibleCount: allowed.length,
+        disqualifiedCount: disqualified.length,
+        disqualifiedCategories: disqualified,
+        decisions: decisions,
+        summary: aiData.summary || `${allowed.length} eligible categories generated via Gemini AI. ${disqualified.length} categories suppressed under DPDP Act §6 purpose limitation.`
+      }
+    };
   }
 
   const allowedPredicates = [];
@@ -300,4 +346,41 @@ export function analyzeDocumentAndGenerateCredential({ document, verificationMet
       summary: `${allowedPredicates.length} eligible zero-knowledge categories generated. ${disqualifiedCategories.length} categories suppressed under DPDP §6 purpose limitation.`
     }
   };
+}
+
+/**
+ * Asynchronous document analyzer: Queries Google Gemini API if an API key is provided,
+ * otherwise falls back to deterministic DPDP Act §6 rule evaluation.
+ */
+export async function analyzeDocumentWithAi({ document, verificationMeta = {}, geminiApiKey = null, rawText = null }) {
+  const cleanKey = typeof geminiApiKey === 'string' ? geminiApiKey.trim() : null;
+
+  if (cleanKey) {
+    try {
+      const geminiResult = await queryGeminiDocumentAnalysis({
+        document,
+        rawText,
+        apiKey: cleanKey
+      });
+
+      return analyzeDocumentAndGenerateCredential({
+        document,
+        verificationMeta,
+        geminiResult
+      });
+    } catch (err) {
+      console.warn("Live Gemini API call error, falling back to local engine:", err.message);
+      const fallback = analyzeDocumentAndGenerateCredential({ document, verificationMeta });
+      fallback.aiEngine = "Local Rule Engine (Gemini Query Failed)";
+      fallback.aiEngineError = err.message;
+      fallback.aiAuditReport.decisions.unshift(
+        `[Gemini Live Notice]: Attempted Google Gemini analysis, but received error: "${err.message}". Evaluated via local statutory rule engine.`
+      );
+      return fallback;
+    }
+  }
+
+  const baseline = analyzeDocumentAndGenerateCredential({ document, verificationMeta });
+  baseline.aiEngine = "Local Rule Engine (Awaiting Gemini API Key)";
+  return baseline;
 }

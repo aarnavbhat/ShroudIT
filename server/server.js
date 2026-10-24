@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import fs from 'fs';
 import { 
   generateIssuerKeyPair, 
   signBbs, 
@@ -11,6 +12,24 @@ import {
 } from '../src/lib/aiAnomalyEngine.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { verifyGovernmentSignature } from '../src/lib/governmentSigner.js';
+import { queryGeminiDocumentAnalysis } from '../src/lib/geminiAiService.js';
+import { analyzeDocumentWithAi } from '../src/lib/documentAiEngine.js';
+
+// Auto-load .env file if present
+if (fs.existsSync('.env')) {
+  try {
+    const envLines = fs.readFileSync('.env', 'utf8').split('\n');
+    for (const line of envLines) {
+      const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+      if (match) {
+        const k = match[1];
+        let v = match[2] || '';
+        v = v.trim().replace(/^['"]|['"]$/g, '');
+        if (!process.env[k]) process.env[k] = v;
+      }
+    }
+  } catch (e) {}
+}
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -319,6 +338,45 @@ app.get('/api/auditor/telemetry', (req, res) => {
     }
   ];
   return res.json({ telemetry: sampleEvents });
+});
+
+// --- AI Document Ingestion & Gemini Purpose Limitation Endpoints ---
+app.get('/api/ai/status', (req, res) => {
+  const hasEnvKey = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim());
+  res.json({
+    status: 'online',
+    geminiConfigured: hasEnvKey,
+    model: 'gemini-2.5-flash',
+    description: 'Google Gemini Dynamic Civic Document Comprehension & Purpose Limitation Engine'
+  });
+});
+
+app.post('/api/ai/analyze-document', async (req, res) => {
+  try {
+    const { document, rawText, apiKey } = req.body;
+    const effectiveKey = apiKey || process.env.GEMINI_API_KEY;
+
+    if (!document) {
+      return res.status(400).json({ error: "Missing document payload." });
+    }
+
+    if (!effectiveKey) {
+      return res.status(400).json({ 
+        error: "Missing Gemini API Key. Provide 'apiKey' in request body or set GEMINI_API_KEY in server environment." 
+      });
+    }
+
+    const aiResult = await queryGeminiDocumentAnalysis({
+      document,
+      rawText,
+      apiKey: effectiveKey
+    });
+
+    return res.json(aiResult);
+  } catch (err) {
+    console.error("Gemini Document Analysis API Error:", err);
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 export default app;
