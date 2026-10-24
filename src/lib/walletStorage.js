@@ -2,13 +2,21 @@
 // Uses browser IndexedDB and WebCrypto AES-GCM (256-bit) encryption at rest.
 
 import { openDB } from 'idb';
-import { CREDENTIALS, INITIAL_CONSENT_RECEIPTS } from './mockData.js';
+import { INITIAL_CONSENT_RECEIPTS } from './mockData.js';
 
 const DB_NAME = 'ShroudIT_Secure_Wallet_v1';
 const DB_VERSION = 1;
 const STORE_CREDS = 'credentials';
 const STORE_RECEIPTS = 'consent_receipts';
 const STORE_KEYS = 'hardware_keys';
+
+export const HARDCODED_MOCK_IDS = new Set([
+  'cred-blr-civic-01',
+  'cred-bmtc-pass-88',
+  'cred-cyber-cert-44',
+  'cred-welfare-subsidy-12',
+  'cred-foundation-aarav'
+]);
 
 // Generate or retrieve persistent local device encryption key
 async function getWalletEncryptionKey() {
@@ -56,17 +64,21 @@ async function getDb() {
 }
 
 /**
- * Initialize storage with default civic credentials if empty
+ * Initialize storage and purge any legacy hardcoded mock credentials from storage
  */
 export async function initWalletStorage() {
   try {
     const db = await getDb();
-    const count = await db.count(STORE_CREDS);
-
-    if (count === 0) {
-      for (const cred of CREDENTIALS) {
-        await db.put(STORE_CREDS, cred);
+    // Purge any legacy hardcoded mock credentials so only government-ingested cards appear
+    const creds = await db.getAll(STORE_CREDS);
+    for (const c of creds) {
+      if (HARDCODED_MOCK_IDS.has(c.id) || (!c.isAiGenerated && !c.verifiedByPublicKey && !c.documentNumber && !c.holderId)) {
+        await db.delete(STORE_CREDS, c.id);
       }
+    }
+
+    const receiptCount = await db.count(STORE_RECEIPTS);
+    if (receiptCount === 0) {
       for (const receipt of INITIAL_CONSENT_RECEIPTS) {
         await db.put(STORE_RECEIPTS, receipt);
       }
@@ -77,21 +89,37 @@ export async function initWalletStorage() {
 }
 
 /**
- * Retrieve all credentials from encrypted local storage
+ * Retrieve credentials from local storage for a specific logged-in citizen.
+ * Strictly excludes hardcoded credentials and returns only government-issued certificates.
  */
-export async function getStoredCredentials() {
+export async function getStoredCredentials(user = null) {
   try {
     const db = await getDb();
     const creds = await db.getAll(STORE_CREDS);
-    if (!creds || creds.length === 0) return CREDENTIALS;
-    // Prioritize AI-verified dynamic credentials at the top of the stack
-    return [...creds].sort((a, b) => {
-      if (a.isAiGenerated && !b.isAiGenerated) return -1;
-      if (!a.isAiGenerated && b.isAiGenerated) return 1;
-      return 0;
+    if (!creds || creds.length === 0) return [];
+
+    // Filter out any legacy hardcoded mock credentials
+    const govIssued = creds.filter(c => 
+      !HARDCODED_MOCK_IDS.has(c.id) && (c.isAiGenerated || c.verifiedByPublicKey || c.documentNumber || c.holderId)
+    );
+
+    if (!user) return govIssued;
+
+    const userId = user.id;
+    const username = user.username;
+    const userDid = user.did;
+    const userName = (user.name || '').toLowerCase().trim();
+
+    return govIssued.filter(c => {
+      if (c.holderId && c.holderId === userId) return true;
+      if (c.holderUsername && c.holderUsername === username) return true;
+      if (c.holderDid && c.holderDid === userDid) return true;
+      const docName = (c.rawData?.fullName || c.rawData?.issuedTo || '').toLowerCase().trim();
+      if (docName && userName && (docName.includes(userName) || userName.includes(docName))) return true;
+      return false;
     });
   } catch (err) {
-    return CREDENTIALS;
+    return [];
   }
 }
 
@@ -122,7 +150,7 @@ export async function getStoredReceipts() {
 }
 
 /**
- * Save newly signed DPDP consent receipt
+ * Save newly issued consent receipt
  */
 export async function saveConsentReceipt(receipt) {
   try {
@@ -135,35 +163,14 @@ export async function saveConsentReceipt(receipt) {
 }
 
 /**
- * Download a signed DPDP audit receipt as a cryptographic JSON document
+ * Export receipt as cryptographic audit JSON
  */
 export function exportReceiptAsJson(receipt) {
-  const exportPayload = {
-    protocol: "ShroudIT DPDP Act 2023 Cryptographic Receipt",
-    version: "1.0",
-    receiptId: receipt.id,
-    timestamp: receipt.timestamp,
-    relyingParty: {
-      name: receipt.verifierName,
-      purposeStatement: receipt.purpose,
-      legalCompliance: receipt.dpdpActNotice
-    },
-    disclosedPredicates: receipt.attributesDisclosed,
-    cryptographicBinding: {
-      nonceHash: receipt.nonceHash,
-      bbsProofCommitment: receipt.bbsProofCommitment,
-      zeroPiiConfirmed: true
-    },
-    holderVerification: "Device Hardware Key Verified (Ed25519)"
-  };
-
-  const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `ShroudIT-DPDP-Receipt-${receipt.id}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(receipt, null, 2));
+  const downloadAnchor = document.createElement('a');
+  downloadAnchor.setAttribute("href", dataStr);
+  downloadAnchor.setAttribute("download", `consent-receipt-${receipt.id}.json`);
+  document.body.appendChild(downloadAnchor);
+  downloadAnchor.click();
+  downloadAnchor.remove();
 }

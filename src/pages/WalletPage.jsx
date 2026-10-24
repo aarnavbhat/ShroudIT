@@ -38,7 +38,7 @@ import {
 } from 'lucide-react';
 import CredentialCard from '../components/CredentialCard';
 import ConsentExplainerModal from '../components/ConsentExplainerModal';
-import { CREDENTIALS, VERIFIERS, INITIAL_CONSENT_RECEIPTS } from '../lib/mockData';
+import { VERIFIERS, INITIAL_CONSENT_RECEIPTS } from '../lib/mockData';
 import { useAuth } from '../lib/authContext';
 import { deriveBbsProof, generateNonce } from '../lib/cryptoSim';
 import { evaluatePurposeFirewall } from '../lib/firewallEngine';
@@ -47,7 +47,8 @@ import {
   getStoredCredentials, 
   getStoredReceipts, 
   saveConsentReceipt, 
-  exportReceiptAsJson 
+  exportReceiptAsJson,
+  HARDCODED_MOCK_IDS 
 } from '../lib/walletStorage';
 
 export default function WalletPage() {
@@ -57,7 +58,7 @@ export default function WalletPage() {
   const allVerifiers = auth?.allVerifiers || VERIFIERS;
   const allIssuers = auth?.allIssuers || [];
   const allResidents = auth?.allResidents || [];
-  const userCredentials = auth?.userCredentials || CREDENTIALS;
+  const userCredentials = auth?.userCredentials || [];
   const loginAsResident = auth?.loginAsResident;
   const createCustomResident = auth?.createCustomResident;
   const logout = auth?.logout;
@@ -157,9 +158,9 @@ export default function WalletPage() {
     setAuthSuccess(null);
   };
 
-  const [credentials, setCredentials] = useState(userCredentials);
-  const [selectedCredId, setSelectedCredId] = useState(userCredentials[0]?.id || CREDENTIALS[0].id);
-  const [selectedPredicates, setSelectedPredicates] = useState(["over_18", "blr_resident"]);
+  const [credentials, setCredentials] = useState([]);
+  const [selectedCredId, setSelectedCredId] = useState('');
+  const [selectedPredicates, setSelectedPredicates] = useState([]);
   const [selectedVerifierId, setSelectedVerifierId] = useState("verifier-library");
   
   // View mode: 'desktop' or 'phone'
@@ -169,7 +170,7 @@ export default function WalletPage() {
   const [activeProof, setActiveProof] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [explainerOpen, setExplainerOpen] = useState(false);
-  const [explainerCred, setExplainerCred] = useState(userCredentials[0] || CREDENTIALS[0]);
+  const [explainerCred, setExplainerCred] = useState(null);
   const [overAskingTriggered, setOverAskingTriggered] = useState(false);
   const [firewallAudit, setFirewallAudit] = useState(null);
   const [receipts, setReceipts] = useState(INITIAL_CONSENT_RECEIPTS);
@@ -214,17 +215,31 @@ export default function WalletPage() {
   useEffect(() => {
     async function loadWalletStorage() {
       await initWalletStorage();
-      const storedCreds = await getStoredCredentials();
+      const storedCreds = await getStoredCredentials(currentUser);
       const storedReceipts = await getStoredReceipts();
-      if (storedCreds && storedCreds.length > 0) {
-        setCredentials(storedCreds);
 
-        // Check if a newly verified document card was just saved
-        let targetCred = storedCreds[0];
+      // Gather user-specific certifications directly on currentUser
+      const userCerts = (currentUser?.certifications || [])
+        .map(c => c.credentialData || c)
+        .filter(c => c && !HARDCODED_MOCK_IDS.has(c.id));
+
+      const credMap = new Map();
+      (storedCreds || []).forEach(c => {
+        if (!HARDCODED_MOCK_IDS.has(c.id)) credMap.set(c.id, c);
+      });
+      userCerts.forEach(c => {
+        if (!credMap.has(c.id)) credMap.set(c.id, c);
+      });
+
+      const userSpecificCreds = Array.from(credMap.values());
+      setCredentials(userSpecificCreds);
+
+      if (userSpecificCreds.length > 0) {
+        let targetCred = userSpecificCreds[0];
         try {
           const autoSelectedId = localStorage.getItem('shroudit_selected_credential_id');
           if (autoSelectedId) {
-            const found = storedCreds.find(c => c.id === autoSelectedId);
+            const found = userSpecificCreds.find(c => c.id === autoSelectedId);
             if (found) {
               targetCred = found;
             }
@@ -235,8 +250,15 @@ export default function WalletPage() {
         setSelectedCredId(targetCred.id);
         if (targetCred.predicates && targetCred.predicates.length > 0) {
           setSelectedPredicates(targetCred.predicates.map(p => p.id));
+        } else {
+          setSelectedPredicates([]);
         }
+      } else {
+        setSelectedCredId('');
+        setSelectedPredicates([]);
+        setActiveProof(null);
       }
+
       if (storedReceipts && storedReceipts.length > 0) {
         setReceipts(storedReceipts);
       }
@@ -255,9 +277,9 @@ export default function WalletPage() {
       setStorageInitialized(true);
     }
     loadWalletStorage();
-  }, [userCredentials]);
+  }, [currentUser, userCredentials]);
 
-  const currentCred = credentials.find(c => c.id === selectedCredId) || credentials[0] || CREDENTIALS[0];
+  const currentCred = credentials.find(c => c.id === selectedCredId) || credentials[0] || null;
   const currentVerifier = allVerifiers.find(v => v.id === selectedVerifierId) || allVerifiers[0] || VERIFIERS[0];
 
   const handleTogglePredicate = (predId) => {
@@ -269,6 +291,7 @@ export default function WalletPage() {
   };
 
   const handleSelectCard = (cred) => {
+    if (!cred) return;
     setSelectedCredId(cred.id);
     setSelectedPredicates(cred.predicates.map(p => p.id));
 
@@ -297,11 +320,12 @@ export default function WalletPage() {
   };
 
   const handleOpenExplainer = (cred) => {
-    setExplainerCred(cred);
+    setExplainerCred(cred || currentCred);
     setExplainerOpen(true);
   };
 
   const handleGenerateProof = () => {
+    if (!currentCred) return;
     setIsGenerating(true);
     setTimeout(() => {
       const nonceObj = generateNonce(currentVerifier.did);
@@ -342,6 +366,7 @@ export default function WalletPage() {
   };
 
   const handleSimulateOverAsking = () => {
+    if (!currentCred) return;
     const rogueVerifierRequest = {
       verifierDid: "did:shroud:rogue-unregistered-wifi-kiosk",
       verifierName: "Municipal Public Wi-Fi Portal (Unregistered)",
@@ -917,45 +942,69 @@ export default function WalletPage() {
               </span>
             </div>
 
-            {/* Active Card in Phone */}
-            <div className="rounded-2xl p-4 bg-gradient-to-br from-cyan-950/60 to-slate-900 border border-cyan-500/40 space-y-3">
-              <div className="flex justify-between items-start">
-                <div>
-                  <span className="text-[9px] font-mono uppercase text-cyan-400">{currentCred.category}</span>
-                  <h3 className="text-sm font-bold text-white">{currentCred.title}</h3>
+            {/* Mobile Enclave Card or Empty State */}
+            {!currentCred || credentials.length === 0 ? (
+              <div className="rounded-2xl p-6 bg-slate-900/60 border border-slate-800 text-center space-y-3 my-4">
+                <div className="w-12 h-12 rounded-xl bg-cyan-950/50 border border-cyan-800/60 flex items-center justify-center text-cyan-400 mx-auto">
+                  <FileCheck className="w-6 h-6" />
                 </div>
-                <div className="w-7 h-5 rounded border border-amber-400/40 bg-amber-500/20"></div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-white">No Government Certificates</h4>
+                  <p className="text-xs text-slate-400">
+                    Wallet holds 0 certificates for {currentUser?.name || "this citizen"}.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/documents')}
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-cyan-500/20"
+                >
+                  + Ingest Certificate
+                </button>
               </div>
-              <div className="text-xs text-slate-300 font-mono">
-                Holder: {currentUser?.name || "Aarav S. Rao"}
-              </div>
-              <div className="pt-2 border-t border-slate-800 flex justify-between text-[10px] text-slate-400">
-                <span>Predicates: {currentCred.predicates.length} Available</span>
-                <span className="text-emerald-400 font-bold">Unrevoked (Epoch 142)</span>
-              </div>
-            </div>
-
-            {/* Mobile Predicate Selection */}
-            <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
-              <span className="text-[11px] font-semibold text-slate-300 block">Selective Disclosure (ZK-Proof)</span>
-              {currentCred.predicates.map(p => {
-                const isChecked = selectedPredicates.includes(p.id);
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => handleTogglePredicate(p.id)}
-                    className={`flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer border ${
-                      isChecked ? 'bg-cyan-950/60 border-cyan-500 text-cyan-200' : 'bg-slate-900 border-slate-800 text-slate-400'
-                    }`}
-                  >
-                    <span>{p.label}</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
-                      {isChecked ? 'DISCLOSE' : 'HIDE'}
-                    </span>
+            ) : (
+              <>
+                {/* Active Card in Phone */}
+                <div className="rounded-2xl p-4 bg-gradient-to-br from-cyan-950/60 to-slate-900 border border-cyan-500/40 space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="text-[9px] font-mono uppercase text-cyan-400">{currentCred.category}</span>
+                      <h3 className="text-sm font-bold text-white">{currentCred.title}</h3>
+                    </div>
+                    <div className="w-7 h-5 rounded border border-amber-400/40 bg-amber-500/20"></div>
                   </div>
-                );
-              })}
-            </div>
+                  <div className="text-xs text-slate-300 font-mono">
+                    Holder: {currentUser?.name || "Aarav S. Rao"}
+                  </div>
+                  <div className="pt-2 border-t border-slate-800 flex justify-between text-[10px] text-slate-400">
+                    <span>Predicates: {(currentCred.predicates || []).length} Available</span>
+                    <span className="text-emerald-400 font-bold">Unrevoked (Epoch 142)</span>
+                  </div>
+                </div>
+
+                {/* Mobile Predicate Selection */}
+                <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+                  <span className="text-[11px] font-semibold text-slate-300 block">Selective Disclosure (ZK-Proof)</span>
+                  {(currentCred.predicates || []).map(p => {
+                    const isChecked = selectedPredicates.includes(p.id);
+                    return (
+                      <div
+                        key={p.id}
+                        onClick={() => handleTogglePredicate(p.id)}
+                        className={`flex items-center justify-between p-2 rounded-xl text-xs cursor-pointer border ${
+                          isChecked ? 'bg-cyan-950/60 border-cyan-500 text-cyan-200' : 'bg-slate-900 border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        <span>{p.label}</span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
+                          {isChecked ? 'DISCLOSE' : 'HIDE'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
 
             {/* Mobile AI Consent Explainer Button */}
             <button
@@ -1100,24 +1149,64 @@ export default function WalletPage() {
                 </div>
               </div>
 
-              <div className="space-y-4">
-                {credentials.map((cred) => (
-                  <CredentialCard
-                    key={cred.id}
-                    credential={cred}
-                    isSelected={cred.id === selectedCredId}
-                    onSelect={handleSelectCard}
-                    selectedPredicates={cred.id === selectedCredId ? selectedPredicates : []}
-                    onTogglePredicate={handleTogglePredicate}
-                    onOpenExplainer={handleOpenExplainer}
-                  />
-                ))}
-              </div>
+              {credentials.length === 0 ? (
+                <div className="rounded-3xl glass-panel p-8 border border-slate-800 text-center space-y-4">
+                  <div className="w-16 h-16 rounded-2xl bg-cyan-950/40 border border-cyan-800/60 flex items-center justify-center text-cyan-400 mx-auto">
+                    <FileCheck className="w-8 h-8" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <h3 className="text-lg font-bold text-white">No Government Certificates Issued</h3>
+                    <p className="text-xs text-slate-400 max-w-md mx-auto">
+                      This wallet enclave currently holds no certificates for <strong className="text-slate-200">{currentUser?.name}</strong>. Only credentials verified and issued through the Government Ingestion Gateway will appear here.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/documents')}
+                    className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-cyan-500/20 hover:brightness-110 transition-all"
+                  >
+                    <Building2 className="w-4 h-4" />
+                    <span>+ Ingest & Issue Government Certificate</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {credentials.map((cred) => (
+                    <CredentialCard
+                      key={cred.id}
+                      credential={cred}
+                      isSelected={cred.id === selectedCredId}
+                      onSelect={handleSelectCard}
+                      selectedPredicates={cred.id === selectedCredId ? selectedPredicates : []}
+                      onTogglePredicate={handleTogglePredicate}
+                      onOpenExplainer={handleOpenExplainer}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Right Column: Interactive BBS+ Derivation Console */}
             <div className="lg:col-span-5 space-y-5">
-              <div className="rounded-2xl glass-panel-glow p-5 border border-cyan-500/30 space-y-4">
+              {!currentCred || credentials.length === 0 ? (
+                <div className="rounded-2xl glass-panel p-6 border border-slate-800 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 mx-auto">
+                    <Cpu className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-300">BBS+ Derivation Console Standby</h4>
+                  <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                    Derivation console will activate once an official government certificate is issued and loaded into this wallet enclave.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/documents')}
+                    className="px-4 py-2 rounded-xl bg-cyan-950 text-cyan-300 border border-cyan-800/80 hover:bg-cyan-900 text-xs font-semibold"
+                  >
+                    Go to Government Ingestion Gateway →
+                  </button>
+                </div>
+              ) : (
+                <div className="rounded-2xl glass-panel-glow p-5 border border-cyan-500/30 space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                   <div className="flex items-center space-x-2">
                     <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
@@ -1168,7 +1257,7 @@ export default function WalletPage() {
                   ) : (
                     <div className="flex flex-wrap gap-1.5">
                       {selectedPredicates.map(pid => {
-                        const pred = currentCred.predicates.find(p => p.id === pid);
+                        const pred = currentCred?.predicates?.find(p => p.id === pid);
                         return (
                           <span key={pid} className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 font-mono text-xs flex items-center space-x-1">
                             <CheckCircle2 className="w-3 h-3 text-cyan-400" />
@@ -1182,7 +1271,7 @@ export default function WalletPage() {
                   <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-400">
                     <span>Withheld Attributes:</span>
                     <span className="text-emerald-400 font-bold">
-                      {Object.keys(currentCred.rawData).length} kept confidential
+                      {Object.keys(currentCred?.rawData || {}).length} kept confidential
                     </span>
                   </div>
                 </div>
@@ -1364,6 +1453,8 @@ export default function WalletPage() {
                 )}
               </div>
 
+              )}
+
               {/* Local Consent Receipts Log */}
               <div className="rounded-2xl glass-panel p-5 border border-slate-800 space-y-3">
                 <div className="flex items-center justify-between">
@@ -1416,9 +1507,9 @@ export default function WalletPage() {
       <ConsentExplainerModal
         isOpen={explainerOpen}
         onClose={() => setExplainerOpen(false)}
-        verifierName={currentVerifier.name}
+        verifierName={currentVerifier?.name || "City Verifier"}
         requestedPredicateLabels={selectedPredicates.map(pid => {
-          const p = currentCred.predicates.find(x => x.id === pid);
+          const p = currentCred?.predicates?.find(x => x.id === pid);
           return p ? p.label : pid;
         })}
         onAuthorize={() => handleGenerateProof()}

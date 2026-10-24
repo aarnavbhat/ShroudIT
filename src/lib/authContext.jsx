@@ -13,7 +13,7 @@ import {
   deriveIssuerPublicKey 
 } from './bbsEngine.js';
 import { CREDENTIALS, VERIFIERS } from './mockData.js';
-import { saveCredential, getStoredCredentials } from './walletStorage.js';
+import { saveCredential, getStoredCredentials, HARDCODED_MOCK_IDS } from './walletStorage.js';
 import { checkIssuerAccreditationOnChain } from './web3Client.js';
 
 // Pre-configured government bodies with authentic BLS12-381 keypairs
@@ -68,21 +68,7 @@ const DEFAULT_RESIDENTS = [
     isStudent: true,
     isGovernmentVerified: true,
     status: "GOVERNMENT_VERIFIED",
-    certifications: [
-      {
-        id: "cred-foundation-aarav",
-        title: "Smart City Resident Identity",
-        issuer: "Center for e-Governance, Karnataka",
-        issuerDid: "did:shroud:gov-karnataka-ceg",
-        category: "Municipal Identity",
-        verifiedAt: "2026-01-15T10:00:00.000Z",
-        predicates: [
-          { id: "over_18", label: "Age ≥ 18", statement: "Holder is 18 years of age or older", value: true },
-          { id: "blr_resident", label: "Bengaluru Resident", statement: "Holder resides in Bengaluru Urban (Ward 142)", value: true },
-          { id: "valid_student", label: "Student Concession", statement: "Enrolled student at recognized institution", value: true }
-        ]
-      }
-    ],
+    certifications: [],
     hardwareKey: generateDeviceHardwareKey(),
     did: "did:key:z6Mku7X...89p"
   },
@@ -127,7 +113,7 @@ export function AuthProvider({ children }) {
   const [allResidents, setAllResidents] = useState(DEFAULT_RESIDENTS);
   const [allIssuers, setAllIssuers] = useState(DEFAULT_ISSUERS);
   const [allVerifiers, setAllVerifiers] = useState(VERIFIERS);
-  const [userCredentials, setUserCredentials] = useState(CREDENTIALS);
+  const [userCredentials, setUserCredentials] = useState([]);
 
   // Load persistent session and custom accounts from localStorage on mount
   useEffect(() => {
@@ -139,7 +125,7 @@ export function AuthProvider({ children }) {
         const parsedCustom = JSON.parse(customResidents);
         const map = new Map();
         DEFAULT_RESIDENTS.forEach(r => map.set(r.id, r));
-        parsedCustom.forEach(r => map.set(r.id, r));
+        parsedCustom.forEach(r => { const cleaned = (r.certifications || []).filter(c => !HARDCODED_MOCK_IDS.has(c.id)); map.set(r.id, { ...r, certifications: cleaned }); });
         combinedResidents = Array.from(map.values());
         setAllResidents(combinedResidents);
       }
@@ -311,7 +297,7 @@ export function AuthProvider({ children }) {
   // This turns their account to isGovernmentVerified: true, making it valid for login!
   const bindGovernmentCertificationToUser = (residentId, credential) => {
     const targetId = typeof residentId === 'object' ? residentId.id : residentId;
-    const targetResident = allResidents.find(r => r.id === targetId || r.did === targetId);
+    const targetResident = allResidents.find(r => r.id === targetId || r.did === targetId || (r.username && r.username.toLowerCase() === String(targetId).toLowerCase()));
 
     if (!targetResident) {
       return {
@@ -320,19 +306,28 @@ export function AuthProvider({ children }) {
       };
     }
 
-    const certRecord = {
-      id: credential?.id || `gov-cert-${Date.now().toString(36)}`,
-      title: credential?.title || "Government Certified Credential",
-      category: credential?.category || "Government Service",
-      issuer: credential?.issuer || "Center for e-Governance, Karnataka",
-      issuerDid: credential?.issuerDid || "did:shroud:gov-karnataka-ceg",
-      verifiedAt: new Date().toISOString(),
-      predicates: credential?.predicates || [],
-      rawData: credential?.rawData || {},
-      credentialData: credential
+    const credWithHolder = {
+      ...(credential || {}),
+      holderId: targetResident.id,
+      holderUsername: targetResident.username,
+      holderDid: targetResident.did,
+      holderName: targetResident.name
     };
 
-    const existingCerts = Array.isArray(targetResident.certifications) ? targetResident.certifications : [];
+    const certRecord = {
+      id: credWithHolder?.id || `gov-cert-${Date.now().toString(36)}`,
+      title: credWithHolder?.title || "Government Certified Credential",
+      category: credWithHolder?.category || "Government Service",
+      issuer: credWithHolder?.issuer || "Center for e-Governance, Karnataka",
+      issuerDid: credWithHolder?.issuerDid || "did:shroud:gov-karnataka-ceg",
+      verifiedAt: new Date().toISOString(),
+      predicates: credWithHolder?.predicates || [],
+      rawData: credWithHolder?.rawData || {},
+      credentialData: credWithHolder
+    };
+
+    const existingCerts = (Array.isArray(targetResident.certifications) ? targetResident.certifications : [])
+      .filter(c => !HARDCODED_MOCK_IDS.has(c.id));
     const updatedResident = {
       ...targetResident,
       isGovernmentVerified: true,
@@ -357,8 +352,9 @@ export function AuthProvider({ children }) {
     }
 
     // Save credential to wallet storage
-    if (credential) {
-      saveCredential(credential);
+    if (credWithHolder) {
+      saveCredential(credWithHolder);
+      setUserCredentials(prev => [credWithHolder, ...prev.filter(c => c.id !== credWithHolder.id)]);
     }
 
     return {

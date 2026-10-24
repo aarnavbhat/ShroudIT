@@ -46,6 +46,7 @@ export default function DocumentIngestionPage() {
   const allResidents = auth?.allResidents || [];
   const bindGovernmentCertificationToUser = auth?.bindGovernmentCertificationToUser;
   const loginAsResident = auth?.loginAsResident;
+  const currentUser = auth?.currentUser;
 
   const [uploadedFile, setUploadedFile] = useState(null);
   const [documentContent, setDocumentContent] = useState(null);
@@ -245,9 +246,24 @@ export default function DocumentIngestionPage() {
     if (!generatedCredential) return;
 
     try {
-      await saveCredential(generatedCredential);
+      const targetCitizen = allResidents.find(r => r.id === selectedCitizenId) || currentUser || allResidents[0];
+      const enrichedCred = {
+        ...generatedCredential,
+        holderId: targetCitizen?.id,
+        holderUsername: targetCitizen?.username,
+        holderDid: targetCitizen?.did,
+        holderName: targetCitizen?.name
+      };
+
+      await saveCredential(enrichedCred);
+      if (bindGovernmentCertificationToUser && targetCitizen) {
+        bindGovernmentCertificationToUser(targetCitizen.id, enrichedCred);
+      }
+      if (loginAsResident && targetCitizen) {
+        loginAsResident(targetCitizen);
+      }
       try {
-        localStorage.setItem('shroudit_selected_credential_id', generatedCredential.id);
+        localStorage.setItem('shroudit_selected_credential_id', enrichedCred.id);
       } catch (err) {}
       setIsSavedToWallet(true);
 
@@ -268,13 +284,20 @@ export default function DocumentIngestionPage() {
     const target = allResidents.find(r => r.id === selectedCitizenId);
 
     setTimeout(() => {
-      if (bindGovernmentCertificationToUser) {
-        bindGovernmentCertificationToUser(selectedCitizenId, generatedCredential);
+      const enrichedCred = {
+        ...generatedCredential,
+        holderId: target?.id,
+        holderUsername: target?.username,
+        holderDid: target?.did,
+        holderName: target?.name
+      };
+      if (bindGovernmentCertificationToUser && target) {
+        bindGovernmentCertificationToUser(target.id, enrichedCred);
       }
       setIsSendingCert(false);
       setCertSentSuccess({
         citizen: target,
-        credential: generatedCredential,
+        credential: enrichedCred,
         timestamp: new Date().toLocaleTimeString()
       });
     }, 450);
