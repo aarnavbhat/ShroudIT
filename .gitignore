@@ -29,3 +29,9 @@ Thumbs.db
 
 # Temp
 .gemini
+
+# Build logs (do not track)
+BUILD_LOG.md
+build.md
+BUILD.md
+*build*.md
