@@ -8,7 +8,7 @@ import VerifierPage from './pages/VerifierPage';
 import BlockchainPage from './pages/BlockchainPage';
 import AuditorPage from './pages/AuditorPage';
 import LoginPage from './pages/LoginPage';
-import IssuerStudioPage from './pages/IssuerStudioPage';
+import DocumentIngestionPage from './pages/DocumentIngestionPage';
 import { Shield } from 'lucide-react';
 
 export default function App() {
@@ -27,11 +27,13 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Navigate to="/wallet" replace />} />
               <Route path="/wallet" element={<WalletPage />} />
+              <Route path="/documents" element={<DocumentIngestionPage />} />
+              <Route path="/upload" element={<Navigate to="/documents" replace />} />
               <Route path="/verifier" element={<VerifierPage />} />
               <Route path="/blockchain" element={<BlockchainPage />} />
               <Route path="/auditor" element={<AuditorPage />} />
               <Route path="/login" element={<LoginPage />} />
-              <Route path="/issuer" element={<IssuerStudioPage />} />
+              <Route path="/issuer" element={<DocumentIngestionPage />} />
               <Route path="*" element={<Navigate to="/wallet" replace />} />
             </Routes>
           </main>

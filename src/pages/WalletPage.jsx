@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { 
   Shield, 
@@ -39,6 +40,7 @@ import {
 } from '../lib/walletStorage';
 
 export default function WalletPage() {
+  const navigate = useNavigate();
   const auth = useAuth();
   const currentUser = auth?.currentUser;
   const allVerifiers = auth?.allVerifiers || VERIFIERS;
@@ -92,9 +94,23 @@ export default function WalletPage() {
       const storedReceipts = await getStoredReceipts();
       if (storedCreds && storedCreds.length > 0) {
         setCredentials(storedCreds);
-        setSelectedCredId(storedCreds[0].id);
-        if (storedCreds[0].predicates && storedCreds[0].predicates.length > 0) {
-          setSelectedPredicates(storedCreds[0].predicates.map(p => p.id));
+
+        // Check if a newly verified document card was just saved
+        let targetCred = storedCreds[0];
+        try {
+          const autoSelectedId = localStorage.getItem('shroudit_selected_credential_id');
+          if (autoSelectedId) {
+            const found = storedCreds.find(c => c.id === autoSelectedId);
+            if (found) {
+              targetCred = found;
+            }
+            localStorage.removeItem('shroudit_selected_credential_id');
+          }
+        } catch (e) {}
+
+        setSelectedCredId(targetCred.id);
+        if (targetCred.predicates && targetCred.predicates.length > 0) {
+          setSelectedPredicates(targetCred.predicates.map(p => p.id));
         }
       }
       if (storedReceipts && storedReceipts.length > 0) {
@@ -469,7 +485,7 @@ export default function WalletPage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             {/* Left Column: Credentials Stack */}
             <div className="lg:col-span-7 space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h3 className="text-base font-bold text-white flex items-center space-x-2">
                     <Layers className="w-4 h-4 text-cyan-400" />
@@ -477,9 +493,19 @@ export default function WalletPage() {
                   </h3>
                   <p className="text-xs text-slate-400">Select a card to derive a privacy-preserving selective disclosure proof</p>
                 </div>
-                <span className="text-xs font-mono text-slate-400 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800">
-                  {credentials.length} Cards in Secure Enclave
-                </span>
+                <div className="flex items-center space-x-2 shrink-0">
+                  <button
+                    onClick={() => navigate('/documents')}
+                    className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-cyan-950/80 text-cyan-300 border border-cyan-800 hover:bg-cyan-900/90 transition-all shadow-sm"
+                    title="Upload and verify government-signed document (ECDSA P-256)"
+                  >
+                    <FileCheck className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>+ Ingest Gov Document</span>
+                  </button>
+                  <span className="text-xs font-mono text-slate-400 bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-800">
+                    {credentials.length} Cards
+                  </span>
+                </div>
               </div>
 
               <div className="space-y-4">

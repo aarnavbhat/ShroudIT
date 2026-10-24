@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, Link } from 'react-router-dom';
-import { Shield, Smartphone, Building2, Blocks, Cpu, Sparkles, RefreshCw, Layers, Landmark, UserCircle } from 'lucide-react';
+import { Shield, Smartphone, Building2, Blocks, Cpu, Sparkles, RefreshCw, Layers, Landmark, UserCircle, FileCheck } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 
 export default function Navbar({ onResetDemo }) {
@@ -8,8 +8,8 @@ export default function Navbar({ onResetDemo }) {
 
   const navItems = [
     { to: '/wallet', label: 'Resident Wallet', icon: Smartphone, badge: 'PWA Holder' },
+    { to: '/documents', label: 'Gov Ingestion', icon: FileCheck, badge: 'AI Verified' },
     { to: '/verifier', label: 'City Verifier', icon: Building2, badge: 'OpenID4VP' },
-    ...(currentRole === 'issuer' ? [{ to: '/issuer', label: 'Issuer Studio', icon: Landmark, badge: 'Gov Mint' }] : []),
     { to: '/blockchain', label: 'Trust On-Chain', icon: Blocks, badge: 'Hardhat L2' },
     { to: '/auditor', label: 'AI Linkability Auditor', icon: Cpu, badge: 'Core Claim' },
   ];

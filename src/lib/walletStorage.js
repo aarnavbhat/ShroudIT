@@ -83,7 +83,13 @@ export async function getStoredCredentials() {
   try {
     const db = await getDb();
     const creds = await db.getAll(STORE_CREDS);
-    return creds && creds.length > 0 ? creds : CREDENTIALS;
+    if (!creds || creds.length === 0) return CREDENTIALS;
+    // Prioritize AI-verified dynamic credentials at the top of the stack
+    return [...creds].sort((a, b) => {
+      if (a.isAiGenerated && !b.isAiGenerated) return -1;
+      if (!a.isAiGenerated && b.isAiGenerated) return 1;
+      return 0;
+    });
   } catch (err) {
     return CREDENTIALS;
   }

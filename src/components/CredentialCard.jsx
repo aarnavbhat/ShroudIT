@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Train, BadgePercent, Award, CheckCircle2, ChevronRight, EyeOff, Lock, Check, Sparkles } from 'lucide-react';
+import { Shield, Train, BadgePercent, Award, CheckCircle2, ChevronRight, EyeOff, Lock, Check, Sparkles, Ban, FileCheck } from 'lucide-react';
 
 export default function CredentialCard({ 
   credential, 
@@ -13,7 +13,8 @@ export default function CredentialCard({
     Shield,
     Train,
     BadgePercent,
-    Award
+    Award,
+    FileCheck
   };
   const IconComponent = iconMap[credential.icon] || Shield;
 
@@ -45,6 +46,20 @@ export default function CredentialCard({
       accent: "text-violet-400",
       glow: "shadow-violet-500/10",
       badge: "bg-violet-950/80 text-violet-300 border-violet-800"
+    },
+    purple: {
+      gradient: "from-purple-500/15 via-violet-500/5 to-transparent",
+      border: "border-purple-500/40",
+      accent: "text-purple-400",
+      glow: "shadow-purple-500/10",
+      badge: "bg-purple-950/80 text-purple-300 border-purple-800"
+    },
+    blue: {
+      gradient: "from-blue-500/15 via-indigo-500/5 to-transparent",
+      border: "border-blue-500/40",
+      accent: "text-blue-400",
+      glow: "shadow-blue-500/10",
+      badge: "bg-blue-950/80 text-blue-300 border-blue-800"
     }
   };
 
@@ -69,11 +84,19 @@ export default function CredentialCard({
               <IconComponent className="w-5 h-5" />
             </div>
             <div>
-              <span className={`text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full border ${currentTheme.badge}`}>
-                {credential.category}
-              </span>
+              <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                <span className={`text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full border ${currentTheme.badge}`}>
+                  {credential.category}
+                </span>
+                {(credential.isAiGenerated || credential.verifiedByPublicKey) && (
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950/90 text-cyan-300 border border-cyan-700/80 flex items-center space-x-1">
+                    <Sparkles className="w-3 h-3 text-cyan-400" />
+                    <span>AI-Verified (P-256)</span>
+                  </span>
+                )}
+              </div>
               <h4 className="text-base font-semibold text-white mt-1">{credential.title}</h4>
-              <p className="text-xs text-slate-400">{credential.subtitle}</p>
+              <p className="text-xs text-slate-400">{credential.subtitle || (credential.documentNumber ? `Official Document Ref: ${credential.documentNumber}` : "")}</p>
             </div>
           </div>
 
@@ -150,6 +173,29 @@ export default function CredentialCard({
               );
             })}
           </div>
+
+          {/* AI Disqualified Categories (Strict Purpose Limitation Notice) */}
+          {credential.aiAuditReport?.disqualifiedCategories?.length > 0 && (
+            <div className="mt-3 p-2.5 rounded-xl bg-rose-950/30 border border-rose-900/60 space-y-1 text-xs">
+              <div className="flex items-center justify-between text-rose-300 font-semibold text-[11px]">
+                <span className="flex items-center space-x-1">
+                  <Ban className="w-3.5 h-3.5 text-rose-400" />
+                  <span>AI Purpose Limitation (Ineligible Categories Suppressed):</span>
+                </span>
+                <span className="text-[10px] font-mono text-rose-400 bg-rose-950 px-1.5 py-0.5 rounded border border-rose-800">
+                  {credential.aiAuditReport.disqualifiedCategories.length} Blocked
+                </span>
+              </div>
+              <div className="space-y-1 pt-0.5">
+                {credential.aiAuditReport.disqualifiedCategories.map((dis, idx) => (
+                  <div key={idx} className="text-[10px] font-mono text-rose-200/90 pl-3 flex items-start space-x-1">
+                    <span className="text-rose-400 font-bold shrink-0">✕</span>
+                    <span><strong className="text-white">{dis.label}:</strong> {dis.reason.replace('Disqualified: ', '')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Card Footer Actions */}
