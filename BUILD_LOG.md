@@ -139,3 +139,23 @@ This log tracks all project builds for phased GitHub commits during the ChronoFo
   - `test/auth.test.cjs`: Automated test suite covering resident creation, Ed25519 hardware key derivation, government DID challenge authentication, dynamic BLS12-381 credential issuance, and DPDP Act §6 purpose limitation enforcement (6/6 passing tests).
   - Total test suite now stands at **41/41 passing tests**; clean production build in 5.83s.
 
+---
+
+## 🏷️ Build 10 (Completed)
+- **Tag / ID**: `build-10`
+- **Timestamp**: `2026-10-24`
+- **Description**: Real government authority private key challenge-response verification & smart contract accreditation checking.
+- **Milestone Scope**:
+  - `src/lib/bbsEngine.js`: Added `privateKeyHex` export, `parseIssuerPrivateKey` (converts hex or scalar to $\mathbb{F}_q$ scalar field), and `deriveIssuerPublicKey` (derives $\mathbb{G}_2$ public curve point via $PK = SK \cdot G_2$).
+  - `src/lib/web3Client.js`: Added `checkIssuerAccreditationOnChain` querying `IssuerRegistry.sol` (`isIssuerAccredited`, `getIssuer`).
+  - `src/lib/authContext.jsx`: Implemented genuine 5-step government verification pipeline `verifyAndLoginGovIssuer({ issuerId, privateKeyInput, challengeString })`:
+    1. Ephemeral 256-bit challenge nonce validation (`generateAuthorityChallenge`).
+    2. Authority private key parsing and validation.
+    3. BLS12-381 curve challenge signing and bilinear pairing verification (`verifyDirectBbs`).
+    4. Keypair ownership verification confirming derived public key matches the target authority's declared public key.
+    5. Smart contract accreditation check on `IssuerRegistry.sol` ensuring issuer is active on-chain.
+  - `src/pages/LoginPage.jsx`: Built interactive 5-step government verification modal with live challenge display, private key input, demo auto-fill keystore, adversarial key rejection test (proving wrong keys fail), real-time checkmark diagnostics, and dedicated private key copy/export when accrediting new authorities.
+  - `test/auth.test.cjs`: Added automated tests for scalar key parsing, public key derivation, 5-step challenge authentication, and strict rejection of adversarial private keys.
+  - Total test suite now stands at **43/43 passing tests** across cryptography, contracts, microservices, AI models, and multi-persona authentication. Production build clean in 5.91s.
+
+

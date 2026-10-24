@@ -3,9 +3,17 @@
 // Zero hardcoding: Citizens, issuers, and verifiers can be dynamically registered with real keys.
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { generateDeviceHardwareKey, generateIssuerKeyPair, signBbs } from './bbsEngine.js';
+import { 
+  generateDeviceHardwareKey, 
+  generateIssuerKeyPair, 
+  signBbs, 
+  verifyDirectBbs, 
+  parseIssuerPrivateKey, 
+  deriveIssuerPublicKey 
+} from './bbsEngine.js';
 import { CREDENTIALS, VERIFIERS } from './mockData.js';
 import { saveCredential, getStoredCredentials } from './walletStorage.js';
+import { checkIssuerAccreditationOnChain } from './web3Client.js';
 
 // Pre-configured government bodies with authentic BLS12-381 keypairs
 const DEFAULT_ISSUERS = [
@@ -188,20 +196,88 @@ export function AuthProvider({ children }) {
   };
 
   // --- GOVERNMENT ISSUER AUTHENTICATION ---
-  // Cryptographic DID challenge-response verification for government bodies
-  const verifyAndLoginGovIssuer = (issuerId, signedChallengeProof = null) => {
-    const issuer = allIssuers.find(i => i.id === issuerId) || allIssuers[0];
-    
-    // In a live system, verifies that signedChallengeProof matches the public key registered in IssuerRegistry.sol
+  // Step 1: Generate ephemeral 256-bit cryptographic challenge nonce
+  const generateAuthorityChallenge = (issuerDid) => {
+    const randHex = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+    const timestamp = Date.now();
+    return `CHALLENGE_GOV_${(issuerDid || 'CIVIC').replace(/[^a-zA-Z0-9]/g, '_')}_0x${randHex}_${timestamp}`;
+  };
+
+  // Step 2, 3, 4, 5: Verify private key proof & smart contract accreditation
+  const verifyAndLoginGovIssuer = async ({ issuerId, privateKeyInput, challengeString }) => {
+    if (!challengeString) {
+      throw new Error("Challenge nonce is required for government authentication.");
+    }
+
+    const issuer = allIssuers.find(i => i.id === issuerId);
+    if (!issuer) {
+      throw new Error(`Government body with ID "${issuerId}" not found in active directory.`);
+    }
+
+    // Step 2: Parse and validate private key input
+    let privKeyScalar;
+    try {
+      privKeyScalar = parseIssuerPrivateKey(privateKeyInput);
+    } catch (e) {
+      throw new Error("Invalid Private Key format. Please provide a valid 256-bit scalar / hex key.");
+    }
+
+    // Step 3: Cryptographic Signature Verification using BLS12-381 G2 curve
+    let derivedPublic;
+    try {
+      derivedPublic = deriveIssuerPublicKey(privKeyScalar);
+    } catch (e) {
+      throw new Error(`Failed to derive public key on curve G2: ${e.message}`);
+    }
+
+    // Compute curve signature over the challenge
+    const challengeSig = signBbs(privKeyScalar, [challengeString]);
+    const isCryptoValid = verifyDirectBbs(derivedPublic.publicKey, challengeSig, [challengeString]);
+    if (!isCryptoValid) {
+      throw new Error("Cryptographic verification failed: Bilinear pairing math rejected the signature.");
+    }
+
+    // Verify keypair ownership against target issuer
+    const targetPubHex = issuer.keyPair.publicKeyHex;
+    if (derivedPublic.publicKeyHex !== targetPubHex) {
+      throw new Error(`Key Ownership Mismatch: The provided private key does not belong to ${issuer.name}.`);
+    }
+
+    // Step 4: Check issuer's registration / accreditation status in IssuerRegistry.sol
+    const chainStatus = await checkIssuerAccreditationOnChain(issuer.did);
+    if (!chainStatus.isAccredited) {
+      throw new Error(`Smart Contract Accreditation Rejected: ${chainStatus.error || 'DID is not active on-chain'}`);
+    }
+
+    // Step 5: Session authorized!
     const verifiedSession = {
       ...issuer,
-      authenticatedVia: "ON_CHAIN_BLS12_381_CHALLENGE",
+      authenticatedVia: "BLS12_381_CHALLENGE_AND_ISSUER_REGISTRY",
       authenticatedAt: new Date().toISOString(),
-      onChainRegistryValidated: true
+      onChainRegistryValidated: true,
+      lastAuthProof: {
+        challengeNonce: challengeString,
+        signatureA: challengeSig.A_hex,
+        contractAddress: chainStatus.contractAddress,
+        isLiveRpc: chainStatus.isLive,
+        timestamp: new Date().toLocaleTimeString()
+      }
     };
 
     saveSession('issuer', verifiedSession);
-    return verifiedSession;
+    return {
+      success: true,
+      issuer: verifiedSession,
+      checks: {
+        challengeValid: true,
+        privateKeyValid: true,
+        signatureVerified: true,
+        keypairMatched: true,
+        onChainAccredited: true,
+        contractAddress: chainStatus.contractAddress
+      }
+    };
   };
 
   const accreditNewGovDepartment = ({ name, department, jurisdiction, schemas }) => {
@@ -227,7 +303,6 @@ export function AuthProvider({ children }) {
       localStorage.setItem('shroudit_custom_issuers', JSON.stringify([...storedCustom, newIssuer]));
     } catch (e) {}
 
-    saveSession('issuer', newIssuer);
     return newIssuer;
   };
 
@@ -320,6 +395,7 @@ export function AuthProvider({ children }) {
       setUserCredentials,
       loginAsResident,
       createCustomResident,
+      generateAuthorityChallenge,
       verifyAndLoginGovIssuer,
       accreditNewGovDepartment,
       loginAsVerifier,

@@ -81,6 +81,33 @@ describe("ShroudIT Dynamic Authentication, Government On-Chain Accreditation & M
       const isAuthValid = bbs.verifyDirectBbs(issuerKeys.publicKey, sig, [authChallenge]);
       expect(isAuthValid).to.equal(true);
     });
+
+    it("should parse hex private key and derive corresponding G2 public key", function () {
+      const issuerKeys = bbs.generateIssuerKeyPair();
+      expect(issuerKeys.privateKeyHex).to.be.a("string").with.lengthOf(66); // '0x' + 64 hex chars
+
+      const parsedScalar = bbs.parseIssuerPrivateKey(issuerKeys.privateKeyHex);
+      const derived = bbs.deriveIssuerPublicKey(parsedScalar);
+
+      expect(derived.publicKeyHex).to.equal(issuerKeys.publicKeyHex);
+    });
+
+    it("should reject authentication when an incorrect or adversarial private key is provided", function () {
+      const genuineIssuer = bbs.generateIssuerKeyPair();
+      const attackerKeys = bbs.generateIssuerKeyPair();
+      const challenge = "CHALLENGE_GOV_LOGIN_STRICT_CHECK_" + Date.now();
+
+      // Attacker signs challenge with their own key
+      const attackerSig = bbs.signBbs(attackerKeys.privateKey, [challenge]);
+
+      // Verifying against the genuine issuer's public key MUST fail
+      const isSignatureValidForGenuineIssuer = bbs.verifyDirectBbs(
+        genuineIssuer.publicKey,
+        attackerSig,
+        [challenge]
+      );
+      expect(isSignatureValidForGenuineIssuer).to.equal(false);
+    });
   });
 
   describe("3. Dynamic Credential Issuance Studio (Government to Citizen)", function () {

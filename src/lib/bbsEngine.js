@@ -46,8 +46,38 @@ export function generateIssuerKeyPair() {
 
   return {
     privateKey: privKey,
+    privateKeyHex: '0x' + privKey.toString(16).padStart(64, '0'),
     publicKey: pubKey,
     publicKeyHex: pubKey.toHex()
+  };
+}
+
+/**
+ * Parse an issuer private key from hex string, BigInt, or scalar
+ */
+export function parseIssuerPrivateKey(keyInput) {
+  if (typeof keyInput === 'bigint') {
+    return Fr.create(keyInput);
+  }
+  if (typeof keyInput === 'string') {
+    const cleanHex = keyInput.trim().replace(/^0x/i, '');
+    if (!cleanHex || !/^[0-9a-fA-F]+$/.test(cleanHex)) {
+      throw new Error("Invalid hex private key format");
+    }
+    return Fr.create(BigInt('0x' + cleanHex));
+  }
+  throw new Error("Unsupported private key type");
+}
+
+/**
+ * Derive issuer G2 public key from private key scalar
+ */
+export function deriveIssuerPublicKey(privateKey) {
+  const scalar = parseIssuerPrivateKey(privateKey);
+  const pubPoint = G2.Point.BASE.multiply(scalar);
+  return {
+    publicKey: pubPoint,
+    publicKeyHex: pubPoint.toHex()
   };
 }
 
