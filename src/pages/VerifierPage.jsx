@@ -73,8 +73,17 @@ export default function VerifierPage() {
 
     setTimeout(() => {
       setScanAnimationActive(false);
-      const effectiveNonce = (proof && proof.nonceBinding) || (proof && proof.nonce) || (activeNonce ? activeNonce.value : '0x992fa...11c');
+      const effectiveNonce = (proof && (proof.nonceBinding || proof.nonce || proof.n)) || (activeNonce ? activeNonce.value : '0x992fa...11c');
       
+      // Auto-detect target verifier if presentation was bound to a specific registered city verifier
+      const boundVerifier = (proof && (proof.verifierBinding || proof.v));
+      if (boundVerifier && boundVerifier !== currentVerifier.did) {
+        const matchingVerifier = VERIFIERS.find(v => v.did === boundVerifier);
+        if (matchingVerifier) {
+          setSelectedVerifierId(matchingVerifier.id);
+        }
+      }
+
       const proofToTest = (proof && proof.revealedStatements) ? proof : deriveBbsProof({
         credential: CREDENTIALS[0],
         selectedPredicateIds: currentVerifier.requiredPredicates,
@@ -85,7 +94,7 @@ export default function VerifierPage() {
       const res = verifyProof(
         proofToTest,
         effectiveNonce,
-        currentVerifier.did,
+        boundVerifier || currentVerifier.did,
         142
       );
 
@@ -341,70 +350,97 @@ export default function VerifierPage() {
 
             {/* Verification Result Inspection */}
             {verificationResult && (
-              <div className="p-5 rounded-2xl bg-slate-900/95 border border-emerald-500/50 space-y-4 animate-fadeIn">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <CheckCircle2 className="w-6 h-6 text-emerald-400" />
-                    <div>
-                      <h4 className="text-base font-bold text-white">ACCESS GRANTED: VERIFIED</h4>
-                      <span className="text-[10px] text-slate-400 font-mono">Turnstile unlocked at {verificationResult.timestamp}</span>
+              verificationResult.valid ? (
+                <div className="p-5 rounded-2xl bg-slate-900/95 border border-emerald-500/50 space-y-4 animate-fadeIn">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                      <div>
+                        <h4 className="text-base font-bold text-white">ACCESS GRANTED: VERIFIED</h4>
+                        <span className="text-[10px] text-slate-400 font-mono">Turnstile unlocked at {verificationResult.timestamp}</span>
+                      </div>
+                    </div>
+                    <span className="text-xs font-mono font-bold px-2.5 py-1 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
+                      STATUS: VALID
+                    </span>
+                  </div>
+
+                  {/* 4 Cryptographic Proof Checks */}
+                  <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
+                    <div className="p-2 rounded-lg bg-black/50 border border-slate-800 flex items-center justify-between">
+                      <span className="text-slate-400">Nonce Challenge:</span>
+                      <span className="text-emerald-400 font-bold">MATCH (Valid)</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-black/50 border border-slate-800 flex items-center justify-between">
+                      <span className="text-slate-400">BBS Pairing e(σ,g):</span>
+                      <span className="text-emerald-400 font-bold">VALID (OK)</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-black/50 border border-slate-800 flex items-center justify-between">
+                      <span className="text-slate-400">Epoch Status Root:</span>
+                      <span className="text-emerald-400 font-bold">UNREVOKED (#142)</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-black/50 border border-slate-800 flex items-center justify-between">
+                      <span className="text-slate-400">Issuer Accreditation:</span>
+                      <span className="text-emerald-400 font-bold">ON-CHAIN (CeG)</span>
                     </div>
                   </div>
-                  <span className="text-xs font-mono font-bold px-2.5 py-1 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
-                    STATUS: VALID
-                  </span>
-                </div>
 
-                {/* 4 Cryptographic Proof Checks */}
-                <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
-                  <div className="p-2 rounded-lg bg-black/50 border border-slate-800 flex items-center justify-between">
-                    <span className="text-slate-400">Nonce Challenge:</span>
-                    <span className="text-emerald-400 font-bold">MATCH (Valid)</span>
-                  </div>
-                  <div className="p-2 rounded-lg bg-black/50 border border-slate-800 flex items-center justify-between">
-                    <span className="text-slate-400">BBS Pairing e(σ,g):</span>
-                    <span className="text-emerald-400 font-bold">VALID (OK)</span>
-                  </div>
-                  <div className="p-2 rounded-lg bg-black/50 border border-slate-800 flex items-center justify-between">
-                    <span className="text-slate-400">Epoch Status Root:</span>
-                    <span className="text-emerald-400 font-bold">UNREVOKED (#142)</span>
-                  </div>
-                  <div className="p-2 rounded-lg bg-black/50 border border-slate-800 flex items-center justify-between">
-                    <span className="text-slate-400">Issuer Accreditation:</span>
-                    <span className="text-emerald-400 font-bold">ON-CHAIN (CeG)</span>
-                  </div>
-                </div>
+                  {/* What the Verifier Learned (Zero PII Highlight) */}
+                  <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-800/40 space-y-2.5">
+                    <span className="text-xs font-bold text-emerald-300 block">
+                      Facts Proven to Service (Selective Disclosure):
+                    </span>
+                    <div className="space-y-1">
+                      {(verificationResult.revealedPredicates || []).map((p, i) => (
+                        <div key={i} className="flex items-center justify-between text-xs text-slate-200">
+                          <span>• {p.statement || p.label || p}</span>
+                          <span className="font-mono text-emerald-400 font-bold">[VERIFIED TRUE]</span>
+                        </div>
+                      ))}
+                    </div>
 
-                {/* What the Verifier Learned (Zero PII Highlight) */}
-                <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-800/40 space-y-2.5">
-                  <span className="text-xs font-bold text-emerald-300 block">
-                    Facts Proven to Service (Selective Disclosure):
-                  </span>
-                  <div className="space-y-1">
-                    {verificationResult.revealedPredicates.map((p, i) => (
-                      <div key={i} className="flex items-center justify-between text-xs text-slate-200">
-                        <span>• {p.statement}</span>
-                        <span className="font-mono text-emerald-400 font-bold">[VERIFIED TRUE]</span>
-                      </div>
-                    ))}
+                    <div className="mt-3 pt-2.5 border-t border-emerald-800/40 flex items-center justify-between text-xs font-mono">
+                      <span className="text-slate-300">Personal Data Leaked to Verifier:</span>
+                      <span className="px-2.5 py-1 rounded bg-emerald-900 text-emerald-100 font-bold">
+                        0 BYTES (ZERO PII)
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="mt-3 pt-2.5 border-t border-emerald-800/40 flex items-center justify-between text-xs font-mono">
-                    <span className="text-slate-300">Personal Data Leaked to Verifier:</span>
-                    <span className="px-2.5 py-1 rounded bg-emerald-900 text-emerald-100 font-bold">
-                      0 BYTES (ZERO PII)
+                  {/* Audit summary */}
+                  <div className="p-3 rounded-lg bg-black/60 border border-slate-800 text-[11px] text-slate-400 flex items-center space-x-2">
+                    <Lock className="w-4 h-4 text-cyan-400 shrink-0" />
+                    <span>
+                      <strong>Anti-Tracking Assurance:</strong> This presentation cannot be linked to any previous visits or cross-correlated with other city services.
                     </span>
                   </div>
                 </div>
+              ) : (
+                <div className="p-5 rounded-2xl bg-rose-950/40 border border-rose-500/50 space-y-3 animate-fadeIn">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <XCircle className="w-6 h-6 text-rose-400" />
+                      <div>
+                        <h4 className="text-base font-bold text-white">ACCESS DENIED: VERIFICATION REJECTED</h4>
+                        <span className="text-[10px] text-rose-300 font-mono">{verificationResult.summary || "Cryptographic Security Check Failed"}</span>
+                      </div>
+                    </div>
+                    <span className="text-xs font-mono font-bold px-2.5 py-1 rounded bg-rose-950 text-rose-400 border border-rose-800">
+                      STATUS: REJECTED
+                    </span>
+                  </div>
 
-                {/* Audit summary */}
-                <div className="p-3 rounded-lg bg-black/60 border border-slate-800 text-[11px] text-slate-400 flex items-center space-x-2">
-                  <Lock className="w-4 h-4 text-cyan-400 shrink-0" />
-                  <span>
-                    <strong>Anti-Tracking Assurance:</strong> This presentation cannot be linked to any previous visits or cross-correlated with other city services.
-                  </span>
+                  <div className="p-3.5 rounded-xl bg-black/60 border border-rose-900/50 space-y-1.5 text-xs">
+                    <span className="text-xs font-semibold text-rose-300 block">Security Violations Detected:</span>
+                    {(verificationResult.issues || ["Presentation rejected by zero-knowledge pairing engine"]).map((issue, idx) => (
+                      <div key={idx} className="flex items-start space-x-1.5 text-rose-200">
+                        <span className="text-rose-400 font-bold">•</span>
+                        <span>{issue}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )
             )}
           </div>
         </div>

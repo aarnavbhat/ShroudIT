@@ -54,6 +54,7 @@ export default function WalletPage() {
   const [receipts, setReceipts] = useState(INITIAL_CONSENT_RECEIPTS);
   const [copied, setCopied] = useState(false);
   const [storageInitialized, setStorageInitialized] = useState(false);
+  const [enlargeQrOpen, setEnlargeQrOpen] = useState(false);
 
   useEffect(() => {
     async function loadWalletStorage() {
@@ -104,6 +105,10 @@ export default function WalletPage() {
       });
       setActiveProof(proof);
       setIsGenerating(false);
+
+      try {
+        localStorage.setItem('shroudit_active_presentation', JSON.stringify(proof));
+      } catch (e) {}
 
       // Create new DPDP consent receipt
       const newReceipt = {
@@ -303,9 +308,9 @@ export default function WalletPage() {
                       deviceProof: activeProof.deviceBindingSignature,
                       timestamp: activeProof.timestamp
                     })}
-                    size={130}
-                    level="M"
-                    includeMargin={false}
+                    size={150}
+                    level="L"
+                    includeMargin={true}
                   />
                 </div>
                 <p className="text-[10px] text-emerald-400 font-mono">0 Bytes PII Leaked • Fresh Proof</p>
@@ -483,18 +488,32 @@ export default function WalletPage() {
                         <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                         <span>Fresh Presentation Ready</span>
                       </span>
-                      <button
-                        onClick={handleCopyProof}
-                        className="text-[11px] text-slate-400 hover:text-cyan-400 flex items-center space-x-1 font-mono"
-                      >
-                        <Copy className="w-3 h-3" />
-                        <span>{copied ? 'Copied!' : 'Copy Proof'}</span>
-                      </button>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => setEnlargeQrOpen(true)}
+                          className="text-[11px] px-2 py-1 rounded bg-slate-800 text-cyan-400 hover:bg-slate-700 flex items-center space-x-1 font-mono transition-colors"
+                          title="Enlarge QR code for easy camera scanning"
+                        >
+                          <Maximize2 className="w-3 h-3" />
+                          <span>Enlarge QR</span>
+                        </button>
+                        <button
+                          onClick={handleCopyProof}
+                          className="text-[11px] px-2 py-1 rounded bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 flex items-center space-x-1 font-mono transition-colors"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>{copied ? 'Copied!' : 'Copy'}</span>
+                        </button>
+                      </div>
                     </div>
 
                     {/* QR Code Presentation Box */}
-                    <div className="p-4 bg-white rounded-xl flex items-center justify-center space-x-5 shadow-lg shadow-cyan-950/20">
-                      <div className="p-2 bg-white rounded-lg border border-slate-200 shrink-0">
+                    <div className="p-4 bg-white rounded-xl flex flex-col sm:flex-row items-center justify-center gap-4 shadow-lg shadow-cyan-950/20">
+                      <div 
+                        onClick={() => setEnlargeQrOpen(true)}
+                        className="p-1 bg-white rounded-lg border border-slate-200 shrink-0 cursor-pointer hover:ring-2 hover:ring-cyan-500 transition-all"
+                        title="Click to expand full screen"
+                      >
                         <QRCodeSVG
                           value={JSON.stringify({
                             protocol: "openid4vp",
@@ -506,24 +525,25 @@ export default function WalletPage() {
                             deviceProof: activeProof.deviceBindingSignature,
                             timestamp: activeProof.timestamp
                           })}
-                          size={110}
-                          level="M"
-                          includeMargin={false}
+                          size={165}
+                          level="L"
+                          includeMargin={true}
                         />
                       </div>
 
                       <div className="text-slate-900 text-left space-y-1">
                         <span className="text-[10px] font-mono uppercase font-bold text-cyan-800 block">OpenID4VP Dynamic QR</span>
                         <p className="text-xs font-semibold leading-tight">Ready for Smart Turnstile / Kiosk Tap or Camera Scan</p>
-                        <p className="text-[10px] text-slate-600 font-mono">Bound Nonce: {activeProof.nonceBinding.substring(0, 10)}...</p>
-                        <div className="flex items-center space-x-1.5 pt-0.5">
+                        <p className="text-[10px] text-slate-600 font-mono">Bound Nonce: {activeProof.nonceBinding.substring(0, 14)}...</p>
+                        <div className="flex items-center space-x-1.5 pt-1">
                           <span className="inline-block text-[9px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
                             Zero Personal Data
                           </span>
-                          <span className="inline-block text-[9px] px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono">
-                            Live BBS+
+                          <span className="inline-block text-[9px] px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono font-semibold">
+                            High-Density Mode
                           </span>
                         </div>
+                        <p className="text-[10px] text-slate-500 italic pt-0.5">Click QR to enlarge or copy payload for instant tap</p>
                       </div>
                     </div>
 
@@ -603,6 +623,56 @@ export default function WalletPage() {
         })}
         onAuthorize={() => handleGenerateProof()}
       />
+
+      {/* Enlarged High-Resolution QR Modal for Reliable Webcam / Phone Scanning */}
+      {enlargeQrOpen && activeProof && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-sm rounded-3xl bg-[#0b101e] border-2 border-cyan-500/60 p-6 shadow-2xl shadow-cyan-950/80 space-y-4 text-center">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <span className="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider">
+                Full-Size OpenID4VP QR
+              </span>
+              <button
+                onClick={() => setEnlargeQrOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 bg-white rounded-2xl mx-auto inline-block shadow-xl">
+              <QRCodeSVG
+                value={JSON.stringify({
+                  protocol: "openid4vp",
+                  proofId: activeProof.proofId,
+                  verifier: activeProof.verifierBinding,
+                  nonce: activeProof.nonceBinding,
+                  commitment: activeProof.randomizedCommitment,
+                  revealedStatements: activeProof.revealedStatements,
+                  deviceProof: activeProof.deviceBindingSignature,
+                  timestamp: activeProof.timestamp
+                })}
+                size={260}
+                level="L"
+                includeMargin={true}
+              />
+            </div>
+
+            <div className="space-y-1 text-xs font-mono">
+              <p className="text-white font-bold">Ready for Webcam or Phone Scan</p>
+              <p className="text-[11px] text-slate-400">Target: {currentVerifier.name}</p>
+              <p className="text-[10px] text-emerald-400 font-bold">0 Bytes Personal Data Leaked</p>
+            </div>
+
+            <button
+              onClick={() => setEnlargeQrOpen(false)}
+              className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold uppercase transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
