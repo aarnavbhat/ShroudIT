@@ -1273,7 +1273,7 @@ export default function WalletPage() {
                           size={400}
                           level="L"
                           includeMargin={true}
-                          style={{ display: 'none' }}
+                          style={{ position: 'fixed', top: -9999, left: -9999, opacity: 0, pointerEvents: 'none' }}
                         />
                       </div>
 

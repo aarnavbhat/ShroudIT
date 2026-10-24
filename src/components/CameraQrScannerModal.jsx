@@ -1,48 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import jsQR from 'jsqr';
-import { 
-  BrowserQRCodeReader, 
-  QRCodeReader, 
-  RGBLuminanceSource, 
-  HybridBinarizer, 
-  BinaryBitmap, 
-  DecodeHintType 
-} from '@zxing/library';
-
-/**
- * Robust dual-engine QR decoder (ZXing HybridBinarizer + jsQR) operating on canvas ImageData
- */
-function decodeFromCanvasWithZxingAndJsQr(canvas) {
-  if (!canvas || canvas.width < 20 || canvas.height < 20) return null;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const { data, width, height } = imgData;
-
-  // 1. ZXing with HybridBinarizer (adaptive windowed thresholding for uneven lighting & screen glare)
-  try {
-    const lum = new RGBLuminanceSource(data, width, height);
-    const bin = new HybridBinarizer(lum);
-    const bmp = new BinaryBitmap(bin);
-    const qrReader = new QRCodeReader();
-    const hints = new Map();
-    hints.set(DecodeHintType.TRY_HARDER, true);
-    const res = qrReader.decode(bmp, hints);
-    if (res && res.getText()) {
-      return res.getText();
-    }
-  } catch (e) {}
-
-  // 2. jsQR with both normal and inverted module attempts
-  try {
-    const code = jsQR(data, width, height, { inversionAttempts: "attemptBoth" });
-    if (code && code.data) {
-      return code.data;
-    }
-  } catch (e) {}
-
-  return null;
-}
 import { 
   Camera, 
   X, 
@@ -53,8 +10,10 @@ import {
   Zap, 
   Clipboard, 
   Smartphone,
-  RefreshCw
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
+import { decodeCanvasWithDualEngine, decodeQrFromImageFile } from '../lib/qrDecoder.js';
 
 export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, currentNonce, verifierDid }) {
   const [cameraError, setCameraError] = useState(null);
@@ -64,6 +23,8 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
   const [manualPasteOpen, setManualPasteOpen] = useState(false);
   const [manualPasteText, setManualPasteText] = useState('');
   const [hasStoredWalletProof, setHasStoredWalletProof] = useState(false);
+  const [isProcessingFile, setIsProcessingFile] = useState(false);
+  const [fileProcessingMsg, setFileProcessingMsg] = useState('');
 
   const scannerRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -87,6 +48,7 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
     }
 
     setCameraError(null);
+    setIsProcessingFile(false);
     let html5QrCode = null;
 
     const startScanner = async () => {
@@ -150,7 +112,7 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
               canvas.height = vh;
               const ctx = canvas.getContext('2d', { willReadFrequently: true });
               ctx.drawImage(videoEl, 0, 0, vw, vh);
-              const decoded = decodeFromCanvasWithZxingAndJsQr(canvas);
+              const decoded = decodeCanvasWithDualEngine(canvas);
               if (decoded) {
                 clearInterval(videoScanInterval);
                 handleSuccessfulScan(decoded);
@@ -213,196 +175,31 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
     onClose();
   };
 
-  // Industrial-Grade Multi-Engine QR Decoder for Uploaded Photos, Screen Captures & JSON Exports
-  const decodeQrFromImageFile = async (file) => {
-    // If user uploaded a JSON or text file directly
-    if (
-      file.type === "application/json" || 
-      file.name.endsWith(".json") || 
-      file.name.endsWith(".txt") || 
-      file.type.startsWith("text/")
-    ) {
-      const text = await file.text();
-      return text;
-    }
-
-    const imgUrl = URL.createObjectURL(file);
-    const img = new Image();
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = () => reject(new Error("Unable to read image file"));
-      img.src = imgUrl;
-    });
-
-    // Strategy 1: ZXing BrowserQRCodeReader directly on HTML Image Element
-    try {
-      const zxBrowser = new BrowserQRCodeReader();
-      const zxRes = await zxBrowser.decodeFromImageElement(img);
-      if (zxRes && zxRes.getText()) {
-        URL.revokeObjectURL(imgUrl);
-        return zxRes.getText();
-      }
-    } catch (e) {}
-
-    // Strategy 2: Native browser BarcodeDetector if supported
-    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
-      try {
-        const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-        const barcodes = await detector.detect(img);
-        if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
-          URL.revokeObjectURL(imgUrl);
-          return barcodes[0].rawValue;
-        }
-      } catch (e) {}
-    }
-
-    // Strategy 3: Native canvas resolution with dual ZXing + jsQR engine
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(img, 0, 0);
-      const decoded = decodeFromCanvasWithZxingAndJsQr(canvas);
-      if (decoded) {
-        URL.revokeObjectURL(imgUrl);
-        return decoded;
-      }
-    } catch (e) {}
-
-    // Strategy 4: Multi-Scale resampling with high-quality bilinear filtering (essential for phone photos of monitors)
-    const testScales = [1200, 900, 600, 1600, 500];
-    for (const maxDim of testScales) {
-      try {
-        const canvas = document.createElement('canvas');
-        let w = img.width;
-        let h = img.height;
-        if (w > maxDim || h > maxDim) {
-          if (w > h) {
-            h = Math.round((h * maxDim) / w);
-            w = maxDim;
-          } else {
-            w = Math.round((w * maxDim) / h);
-            h = maxDim;
-          }
-        }
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-        // 4A: Bilinear smooth pass (smooths out LCD subpixel moire lines & camera grain)
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, 0, 0, w, h);
-        let decoded = decodeFromCanvasWithZxingAndJsQr(canvas);
-        if (decoded) {
-          URL.revokeObjectURL(imgUrl);
-          return decoded;
-        }
-
-        // 4B: Nearest-neighbor crisp pass (optimal for pixel-perfect screenshots)
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(img, 0, 0, w, h);
-        decoded = decodeFromCanvasWithZxingAndJsQr(canvas);
-        if (decoded) {
-          URL.revokeObjectURL(imgUrl);
-          return decoded;
-        }
-      } catch (e) {}
-    }
-
-    // Strategy 5: Contrast stretch & luminance normalization (for photos with screen glare or shadows)
-    try {
-      const canvas = document.createElement('canvas');
-      let w = Math.min(img.width, 1000);
-      let h = Math.round((img.height * w) / img.width);
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(img, 0, 0, w, h);
-      const imgData = ctx.getImageData(0, 0, w, h);
-      const d = imgData.data;
-
-      let min = 255, max = 0;
-      for (let i = 0; i < d.length; i += 4) {
-        const gray = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000;
-        if (gray < min) min = gray;
-        if (gray > max) max = gray;
-      }
-      const range = max - min;
-      if (range > 20) {
-        for (let i = 0; i < d.length; i += 4) {
-          const gray = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000;
-          const v = Math.min(255, Math.max(0, ((gray - min) / range) * 255));
-          d[i] = v;
-          d[i + 1] = v;
-          d[i + 2] = v;
-        }
-        ctx.putImageData(imgData, 0, 0);
-        const decoded = decodeFromCanvasWithZxingAndJsQr(canvas);
-        if (decoded) {
-          URL.revokeObjectURL(imgUrl);
-          return decoded;
-        }
-      }
-    } catch (e) {}
-
-    // Strategy 6: Center-crop pass (if photo captured entire monitor or desk)
-    try {
-      const canvas = document.createElement('canvas');
-      const cropW = Math.round(img.width * 0.72);
-      const cropH = Math.round(img.height * 0.72);
-      const startX = Math.round(img.width * 0.14);
-      const startY = Math.round(img.height * 0.14);
-      canvas.width = cropW;
-      canvas.height = cropH;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(img, startX, startY, cropW, cropH, 0, 0, cropW, cropH);
-      const decoded = decodeFromCanvasWithZxingAndJsQr(canvas);
-      if (decoded) {
-        URL.revokeObjectURL(imgUrl);
-        return decoded;
-      }
-    } catch (e) {}
-
-    // Strategy 7: Rotations (90, 180, 270 degrees in case of mobile portrait/landscape orientation tag)
-    for (const angle of [90, 180, 270]) {
-      try {
-        const canvas = document.createElement('canvas');
-        if (angle === 90 || angle === 270) {
-          canvas.width = img.height;
-          canvas.height = img.width;
-        } else {
-          canvas.width = img.width;
-          canvas.height = img.height;
-        }
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        ctx.translate(canvas.width / 2, canvas.height / 2);
-        ctx.rotate((angle * Math.PI) / 180);
-        ctx.drawImage(img, -img.width / 2, -img.height / 2);
-        const decoded = decodeFromCanvasWithZxingAndJsQr(canvas);
-        if (decoded) {
-          URL.revokeObjectURL(imgUrl);
-          return decoded;
-        }
-      } catch (e) {}
-    }
-
-    URL.revokeObjectURL(imgUrl);
-    throw new Error("No QR code detected in this photo. Click '⚡ Load Active Presentation from Wallet' below!");
-  };
-
-  // Image file upload handler (e.g. photo taken from phone)
+  // Image file upload handler (e.g. photo taken from phone or downloaded PNG)
   const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files && e.target.files[0];
     if (!file) return;
 
     setCameraError(null);
+    setIsProcessingFile(true);
+    setFileProcessingMsg("Reading and decoding image with ZXing + jsQR...");
+
     try {
-      const decodedText = await decodeQrFromImageFile(file);
+      const decodedText = await decodeQrFromImageFile(file, (msg) => {
+        setFileProcessingMsg(msg);
+      });
+      setIsProcessingFile(false);
       handleSuccessfulScan(decodedText);
     } catch (err) {
+      setIsProcessingFile(false);
       setCameraError(err.message || 'Could not detect QR code in uploaded image.');
+    } finally {
+      if (e.target) {
+        e.target.value = '';
+      }
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -515,29 +312,48 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
         <div className="p-3 rounded-xl bg-cyan-950/40 border border-cyan-800/60 text-xs text-slate-300 space-y-1.5">
           <div className="flex items-center space-x-2">
             <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
-            <span className="font-bold text-cyan-300">Scanning from Phone Screen to Webcam?</span>
+            <span className="font-bold text-cyan-300">Scanning from Phone Screen or Photo?</span>
           </div>
           <ul className="text-[11px] text-slate-400 space-y-0.5 list-disc list-inside">
-            <li><strong className="text-slate-200">Lower phone brightness to ~30%</strong> (prevents camera from being blinded by screen glare)</li>
-            <li><strong className="text-slate-200">Hold phone 35–45 cm (1.5 ft) away</strong> (laptop webcams cannot focus closer than that)</li>
-            <li><strong className="text-cyan-300">Easiest:</strong> Click <strong className="text-white">"⚡ Load Active Presentation from Wallet"</strong> below for instant 1-click test!</li>
+            <li><strong className="text-slate-200">Uploading photo/PNG:</strong> Click <strong className="text-cyan-300">"Upload QR File (.png / .json)"</strong> below for multi-scale ZXing decoding.</li>
+            <li><strong className="text-slate-200">Scanning phone screen:</strong> Lower phone brightness to ~30% and hold 35–45 cm away.</li>
+            <li><strong className="text-cyan-300">Instant test:</strong> Click <strong className="text-white">"⚡ Load Active Presentation from Wallet"</strong> below for 1-click verification!</li>
           </ul>
         </div>
 
-        {/* Camera Viewport */}
-        <div className="relative rounded-2xl bg-black border border-slate-800 overflow-hidden min-h-[240px] flex items-center justify-center">
+        {/* Camera Viewport / File Decoding Overlay */}
+        <div className="relative rounded-2xl bg-black border border-slate-800 overflow-hidden min-h-[250px] flex items-center justify-center">
           <div id="interactive-camera-view" className="w-full h-full"></div>
-          <div id="interactive-camera-view-temp" style={{ position: 'fixed', top: -9999, left: -9999, width: '400px', height: '400px', visibility: 'hidden' }}></div>
 
-          {cameraError && (
-            <div className="p-5 text-center space-y-2 z-10 max-w-sm">
+          {/* Active File Processing Loading State */}
+          {isProcessingFile && (
+            <div className="absolute inset-0 z-30 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center space-y-3 animate-fadeIn">
+              <div className="relative">
+                <div className="w-12 h-12 rounded-full border-4 border-cyan-500/20 border-t-cyan-400 animate-spin"></div>
+                <Sparkles className="w-5 h-5 text-cyan-300 absolute inset-0 m-auto animate-pulse" />
+              </div>
+              <h4 className="text-sm font-bold text-white">Analyzing QR Code</h4>
+              <p className="text-xs text-cyan-300 font-mono max-w-xs">{fileProcessingMsg || "Executing multi-scale ZXing + jsQR pass..."}</p>
+            </div>
+          )}
+
+          {/* Error Notice with Instant 1-Click Action */}
+          {cameraError && !isProcessingFile && (
+            <div className="p-5 text-center space-y-3 z-20 max-w-sm bg-black/90 border border-amber-500/40 rounded-2xl shadow-xl m-3">
               <AlertCircle className="w-8 h-8 text-amber-400 mx-auto" />
-              <p className="text-xs text-amber-200 leading-relaxed">{cameraError}</p>
+              <p className="text-xs text-amber-200 leading-relaxed font-medium">{cameraError}</p>
+              <button
+                type="button"
+                onClick={handleIngestFromWallet}
+                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black text-xs font-bold hover:brightness-110 shadow-lg transition-all"
+              >
+                ⚡ Ingest Active from Wallet
+              </button>
             </div>
           )}
 
           {/* Animated scan line overlay */}
-          {isScanning && !cameraError && (
+          {isScanning && !cameraError && !isProcessingFile && (
             <div className="absolute inset-x-8 h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-lg shadow-cyan-400 animate-bounce pointer-events-none"></div>
           )}
         </div>
@@ -585,7 +401,7 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
           <div className="grid grid-cols-2 gap-2 text-xs">
             <button
               onClick={handlePasteFromClipboard}
-              className="py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 font-semibold flex items-center justify-center space-x-1.5 transition-colors"
+              className="py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 font-semibold flex items-center justify-center space-x-1.5 transition-colors"
             >
               <Clipboard className="w-3.5 h-3.5 text-cyan-400" />
               <span>Paste Clipboard</span>
@@ -593,10 +409,20 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
 
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 font-semibold flex items-center justify-center space-x-1.5 transition-colors"
+              disabled={isProcessingFile}
+              className="py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 font-semibold flex items-center justify-center space-x-1.5 transition-colors disabled:opacity-50"
             >
-              <Upload className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Upload QR File (.png / .json)</span>
+              {isProcessingFile ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
+                  <span>Decoding...</span>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Upload QR (.png/.jpg)</span>
+                </>
+              )}
             </button>
 
             <input

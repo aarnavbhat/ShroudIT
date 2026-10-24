@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Building2, 
   CheckCircle2, 
@@ -22,12 +22,14 @@ import {
   Upload,
   Clipboard,
   Smartphone,
-  Zap
+  Zap,
+  Loader2
 } from 'lucide-react';
 import { VERIFIERS, CREDENTIALS } from '../lib/mockData';
 import { useAuth } from '../lib/authContext';
 import { generateNonce, deriveBbsProof, verifyProof } from '../lib/cryptoSim';
 import CameraQrScannerModal from '../components/CameraQrScannerModal';
+import { decodeQrFromImageFile } from '../lib/qrDecoder.js';
 
 export default function VerifierPage() {
   const auth = useAuth();
@@ -48,6 +50,33 @@ export default function VerifierPage() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [consumedNonces, setConsumedNonces] = useState(() => new Set());
   const [hasStoredWalletPresentation, setHasStoredWalletPresentation] = useState(false);
+  const [isProcessingFile, setIsProcessingFile] = useState(false);
+  const [fileProcessingMsg, setFileProcessingMsg] = useState('');
+  const [fileUploadError, setFileUploadError] = useState(null);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const directFileInputRef = useRef(null);
+
+  const handleDirectFileUpload = async (file) => {
+    if (!file) return;
+    setFileUploadError(null);
+    setVerificationResult(null);
+    setIsProcessingFile(true);
+    setFileProcessingMsg("Reading and analyzing QR proof payload...");
+    try {
+      const decodedText = await decodeQrFromImageFile(file, (msg) => {
+        setFileProcessingMsg(msg);
+      });
+      setIsProcessingFile(false);
+      handleProcessScannedPayload(decodedText);
+    } catch (err) {
+      setIsProcessingFile(false);
+      setFileUploadError(err.message || "Failed to detect QR code from uploaded file.");
+    } finally {
+      if (directFileInputRef.current) {
+        directFileInputRef.current.value = '';
+      }
+    }
+  };
 
   useEffect(() => {
     try {
@@ -495,55 +524,139 @@ export default function VerifierPage() {
               </span>
             </div>
 
-            {/* Interactive Scanner Viewport Graphic */}
-            <div className="relative rounded-2xl bg-black/80 border-2 border-dashed border-slate-700 p-8 flex flex-col items-center justify-center min-h-[190px] overflow-hidden">
+            {/* Interactive Scanner Viewport Graphic (with Drag & Drop Support) */}
+            <div 
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDraggingFile(true); }}
+              onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDraggingFile(false); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDraggingFile(false);
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                  handleDirectFileUpload(e.dataTransfer.files[0]);
+                }
+              }}
+              className={`relative rounded-2xl p-8 flex flex-col items-center justify-center min-h-[200px] overflow-hidden transition-all ${
+                isDraggingFile
+                  ? 'bg-cyan-950/40 border-2 border-dashed border-cyan-400 ring-4 ring-cyan-500/20'
+                  : 'bg-black/80 border-2 border-dashed border-slate-700'
+              }`}
+            >
               {/* Laser scan line animation */}
               {scanAnimationActive && (
                 <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-lg shadow-cyan-400 animate-bounce"></div>
               )}
 
-              <div className="relative z-10 text-center space-y-2">
-                <div className="w-16 h-16 mx-auto rounded-2xl bg-cyan-950/60 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
-                  <Scan className="w-8 h-8" />
+              {isProcessingFile ? (
+                <div className="relative z-10 text-center space-y-3 p-4 animate-fadeIn">
+                  <div className="relative mx-auto w-12 h-12">
+                    <div className="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin"></div>
+                    <Sparkles className="w-5 h-5 text-cyan-300 absolute inset-0 m-auto animate-pulse" />
+                  </div>
+                  <h4 className="text-sm font-bold text-white">Analyzing QR Code</h4>
+                  <p className="text-xs text-cyan-300 font-mono">{fileProcessingMsg || "Executing multi-scale ZXing + jsQR pass..."}</p>
                 </div>
-                <p className="text-xs text-slate-300 font-medium">
-                  {isVerifying ? 'Ingesting presentation and validating cryptographic pairings...' : 'Ready for Resident Wallet Tap or QR Scan'}
-                </p>
-                <div className="flex items-center justify-center space-x-2 pt-0.5">
-                  <span className="text-[10px] text-slate-500 font-mono">
-                    OpenID4VP • BBS+ Selective Disclosure • Nonce Bound
-                  </span>
-                  {hasStoredWalletPresentation && (
-                    <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-700 font-bold flex items-center space-x-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
-                      <span>Wallet Active</span>
+              ) : fileUploadError ? (
+                <div className="relative z-10 text-center space-y-3 p-3 max-w-sm animate-fadeIn">
+                  <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
+                  <p className="text-xs text-amber-200 leading-relaxed font-medium">{fileUploadError}</p>
+                  <div className="flex items-center justify-center space-x-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => directFileInputRef.current?.click()}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
+                    >
+                      Try Another Image
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRunVerification}
+                      className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black text-xs font-bold shadow hover:brightness-110"
+                    >
+                      ⚡ Ingest from Wallet
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="relative z-10 text-center space-y-2">
+                  <div className="w-16 h-16 mx-auto rounded-2xl bg-cyan-950/60 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
+                    <Scan className="w-8 h-8" />
+                  </div>
+                  <p className="text-xs text-slate-300 font-medium">
+                    {isVerifying ? 'Ingesting presentation and validating cryptographic pairings...' : 'Ready for Resident Wallet Tap, QR Upload, or Camera Scan'}
+                  </p>
+                  <div className="flex items-center justify-center space-x-2 pt-0.5">
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      Drag & Drop QR Image / JSON Here • OpenID4VP
                     </span>
-                  )}
+                    {hasStoredWalletPresentation && (
+                      <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-700 font-bold flex items-center space-x-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+                        <span>Wallet Active</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* Action Triggers: Camera Scanner, Ingest Active, Clipboard Paste & Simulated Tap */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <button
-                onClick={() => setScannerOpen(true)}
-                disabled={isVerifying || !currentVerifier.isRegistered}
-                className="py-3 px-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-cyan-500/20 hover:brightness-110 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
-              >
-                <Camera className="w-4 h-4" />
-                <span>Scan QR (Camera/File)</span>
-              </button>
+            {/* Action Triggers: Upload QR Image, Camera Scanner, Ingest Active, Clipboard Paste & Simulated Tap */}
+            <div className="space-y-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => directFileInputRef.current?.click()}
+                  disabled={isVerifying || isProcessingFile || !currentVerifier.isRegistered}
+                  className="py-3 px-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-cyan-500/20 hover:brightness-110 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
+                  title="Upload a QR photo (.png, .jpg) or JSON proof file"
+                >
+                  {isProcessingFile ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Decoding Image...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" />
+                      <span>Upload QR (.png / .jpg)</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setScannerOpen(true)}
+                  disabled={isVerifying || isProcessingFile || !currentVerifier.isRegistered}
+                  className="py-3 px-3.5 rounded-xl bg-slate-900 border border-slate-700 hover:border-cyan-400 text-slate-200 hover:text-white font-extrabold text-xs uppercase tracking-wider transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
+                >
+                  <Camera className="w-4 h-4 text-cyan-400" />
+                  <span>Scan QR (Camera)</span>
+                </button>
+              </div>
+
+              <input
+                type="file"
+                ref={directFileInputRef}
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    handleDirectFileUpload(e.target.files[0]);
+                  }
+                }}
+                accept="image/*,.json,.txt,application/json,text/plain"
+                className="hidden"
+              />
 
               <button
+                type="button"
                 onClick={handleRunVerification}
-                disabled={isVerifying || !currentVerifier.isRegistered}
-                className="py-3 px-3.5 rounded-xl bg-gradient-to-r from-teal-500/20 to-cyan-500/20 border border-cyan-500/50 text-cyan-300 hover:text-white hover:border-cyan-400 font-extrabold text-xs uppercase tracking-wider transition-all flex items-center justify-center space-x-2 disabled:opacity-50 shadow-sm"
+                disabled={isVerifying || isProcessingFile || !currentVerifier.isRegistered}
+                className="w-full py-3 px-3.5 rounded-xl bg-gradient-to-r from-teal-500/20 via-cyan-500/20 to-blue-500/20 border border-cyan-500/50 text-cyan-300 hover:text-white hover:border-cyan-400 font-extrabold text-xs uppercase tracking-wider transition-all flex items-center justify-center space-x-2 disabled:opacity-50 shadow-sm"
                 title="Directly verify the active presentation proof from Resident Wallet"
               >
                 {isVerifying ? (
                   <>
                     <div className="w-3.5 h-3.5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin"></div>
-                    <span>Verifying...</span>
+                    <span>Verifying Cryptographic Pairings...</span>
                   </>
                 ) : (
                   <>
@@ -553,24 +666,28 @@ export default function VerifierPage() {
                 )}
               </button>
 
-              <button
-                onClick={handlePasteDirectProof}
-                disabled={isVerifying || !currentVerifier.isRegistered}
-                className="py-2.5 px-3 rounded-xl bg-slate-900 border border-slate-700 hover:border-cyan-500 text-slate-300 hover:text-white text-xs font-semibold flex items-center justify-center space-x-1.5 transition-colors"
-                title="Paste proof payload from clipboard"
-              >
-                <Clipboard className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Paste Proof from Clipboard</span>
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={handlePasteDirectProof}
+                  disabled={isVerifying || isProcessingFile || !currentVerifier.isRegistered}
+                  className="py-2.5 px-3 rounded-xl bg-slate-900 border border-slate-700 hover:border-cyan-500 text-slate-300 hover:text-white text-xs font-semibold flex items-center justify-center space-x-1.5 transition-colors"
+                  title="Paste proof payload from clipboard"
+                >
+                  <Clipboard className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Paste Clipboard Proof</span>
+                </button>
 
-              <button
-                onClick={handleRunVerification}
-                disabled={isVerifying || !currentVerifier.isRegistered}
-                className="py-2.5 px-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200 text-xs font-semibold flex items-center justify-center space-x-1.5 transition-colors"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Simulate Turnstile NFC Tap</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={handleRunVerification}
+                  disabled={isVerifying || isProcessingFile || !currentVerifier.isRegistered}
+                  className="py-2.5 px-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200 text-xs font-semibold flex items-center justify-center space-x-1.5 transition-colors"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Simulate Turnstile NFC Tap</span>
+                </button>
+              </div>
             </div>
 
             {/* Verification Result Inspection */}
