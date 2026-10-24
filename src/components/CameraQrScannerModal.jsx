@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
+import jsQR from 'jsqr';
 import { 
   Camera, 
   X, 
@@ -24,6 +25,8 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
 
   const scannerRef = useRef(null);
   const fileInputRef = useRef(null);
+  const frameCanvasRef = useRef(null);
+  const videoIntervalRef = useRef(null);
 
   useEffect(() => {
     // Check if wallet has a stored presentation in localStorage
@@ -89,6 +92,32 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
             // Frame error normal while scanning
           }
         );
+
+        // Supplementary high-speed jsQR frame inspector running directly on HTML video stream
+        const videoScanInterval = setInterval(() => {
+          try {
+            const videoEl = document.querySelector("#interactive-camera-view video");
+            if (videoEl && videoEl.readyState >= 2 && videoEl.videoWidth > 0) {
+              const vw = videoEl.videoWidth;
+              const vh = videoEl.videoHeight;
+              if (!frameCanvasRef.current) {
+                frameCanvasRef.current = document.createElement('canvas');
+              }
+              const canvas = frameCanvasRef.current;
+              canvas.width = vw;
+              canvas.height = vh;
+              const ctx = canvas.getContext('2d', { willReadFrequently: true });
+              ctx.drawImage(videoEl, 0, 0, vw, vh);
+              const imgData = ctx.getImageData(0, 0, vw, vh);
+              const code = jsQR(imgData.data, vw, vh, { inversionAttempts: "dontInvert" });
+              if (code && code.data) {
+                clearInterval(videoScanInterval);
+                handleSuccessfulScan(code.data);
+              }
+            }
+          } catch (e) {}
+        }, 120);
+        videoIntervalRef.current = videoScanInterval;
       } catch (err) {
         setCameraError(`Camera Notice: ${err.message || 'Permission denied or webcam busy'}. Use "Load from Wallet", image file, or clipboard paste.`);
         setIsScanning(false);
@@ -104,6 +133,10 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
   }, [isOpen, selectedCameraId]);
 
   const stopScanner = () => {
+    if (videoIntervalRef.current) {
+      clearInterval(videoIntervalRef.current);
+      videoIntervalRef.current = null;
+    }
     if (scannerRef.current) {
       try {
         if (scannerRef.current.isScanning) {
@@ -139,10 +172,15 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
     onClose();
   };
 
-  // Robust Multi-Stage QR Decoder for Uploaded Photos & Screenshots
+  // Robust Multi-Stage QR Decoder for Uploaded Photos, Screenshots & JSON Exports
   const decodeQrFromImageFile = async (file) => {
-    // If user uploaded a JSON export directly
-    if (file.type === "application/json" || file.name.endsWith(".json")) {
+    // If user uploaded a JSON or text file directly
+    if (
+      file.type === "application/json" || 
+      file.name.endsWith(".json") || 
+      file.name.endsWith(".txt") || 
+      file.type.startsWith("text/")
+    ) {
       const text = await file.text();
       return text;
     }
@@ -155,39 +193,25 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
       img.src = imgUrl;
     });
 
-    // Strategy 1: Native browser BarcodeDetector (fastest, immune to high-res moiré & angle tilt)
-    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
-      try {
-        const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-        const barcodes = await detector.detect(img);
-        if (barcodes && barcodes.length > 0) {
-          URL.revokeObjectURL(imgUrl);
-          return barcodes[0].rawValue;
-        }
-      } catch (e) {}
-    }
-
-    const tempContainer = document.getElementById("interactive-camera-view-temp");
-
-    // Strategy 2: Direct scanFile fallback on raw file
-    if (tempContainer) tempContainer.innerHTML = "";
-    let rawScanner = null;
+    // Strategy 1: jsQR at native image resolution (fastest, pixel-perfect accuracy)
     try {
-      rawScanner = new Html5Qrcode("interactive-camera-view-temp", false);
-      const decoded = await rawScanner.scanFile(file, false);
-      try { await rawScanner.clear(); } catch(e) {}
-      if (decoded) {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+      const imgData = ctx.getImageData(0, 0, img.width, img.height);
+      const code = jsQR(imgData.data, imgData.width, imgData.height, {
+        inversionAttempts: "attemptBoth"
+      });
+      if (code && code.data) {
         URL.revokeObjectURL(imgUrl);
-        return decoded;
+        return code.data;
       }
-    } catch (e) {
-      if (rawScanner) {
-        try { await rawScanner.clear(); } catch(cErr) {}
-      }
-    }
+    } catch (e) {}
 
-    // Strategy 3: Multi-Scale Canvas Downsampling (essential for high-res 12MP/48MP smartphone photos)
-    const testScales = [800, 600, 1100];
+    // Strategy 2: Multi-Scale nearest-neighbor resampling with jsQR (essential for high-res smartphone photos)
+    const testScales = [1200, 800, 600, 1600];
     for (const maxDim of testScales) {
       try {
         const canvas = document.createElement('canvas');
@@ -205,45 +229,29 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
+        ctx.imageSmoothingEnabled = false; // Preserve crisp module edges for QR decoding!
         ctx.drawImage(img, 0, 0, w, h);
-
-        // Try native BarcodeDetector on downsampled canvas
-        if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
-          try {
-            const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-            const barcodes = await detector.detect(canvas);
-            if (barcodes && barcodes.length > 0) {
-              URL.revokeObjectURL(imgUrl);
-              return barcodes[0].rawValue;
-            }
-          } catch (e) {}
+        const imgData = ctx.getImageData(0, 0, w, h);
+        const code = jsQR(imgData.data, imgData.width, imgData.height, {
+          inversionAttempts: "attemptBoth"
+        });
+        if (code && code.data) {
+          URL.revokeObjectURL(imgUrl);
+          return code.data;
         }
+      } catch (e) {}
+    }
 
-        // Try Html5Qrcode on downsampled blob
-        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
-        if (blob) {
-          const scaledFile = new File([blob], `scaled_${maxDim}.jpg`, { type: 'image/jpeg' });
-          if (tempContainer) tempContainer.innerHTML = "";
-          let loopScanner = null;
-          try {
-            loopScanner = new Html5Qrcode("interactive-camera-view-temp", false);
-            const decoded = await loopScanner.scanFile(scaledFile, false);
-            try { await loopScanner.clear(); } catch(e) {}
-            if (decoded) {
-              URL.revokeObjectURL(imgUrl);
-              return decoded;
-            }
-          } catch(loopErr) {
-            if (loopScanner) {
-              try { await loopScanner.clear(); } catch(cErr) {}
-            }
-          }
+    // Strategy 3: Native browser BarcodeDetector (if supported by OS / Chrome)
+    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+      try {
+        const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+        const barcodes = await detector.detect(img);
+        if (barcodes && barcodes.length > 0) {
+          URL.revokeObjectURL(imgUrl);
+          return barcodes[0].rawValue;
         }
-      } catch (err) {
-        // try next scale
-      }
+      } catch (e) {}
     }
 
     URL.revokeObjectURL(imgUrl);
@@ -454,14 +462,14 @@ export default function CameraQrScannerModal({ isOpen, onClose, onScanSuccess, c
               className="py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 font-semibold flex items-center justify-center space-x-1.5 transition-colors"
             >
               <Upload className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Upload QR File</span>
+              <span>Upload QR File (.png / .json)</span>
             </button>
 
             <input
               type="file"
               ref={fileInputRef}
               onChange={handleFileUpload}
-              accept="image/*"
+              accept="image/*,.json,.txt,application/json,text/plain"
               className="hidden"
             />
           </div>

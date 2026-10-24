@@ -641,6 +641,20 @@ export default function VerifierPage() {
                         <span>{issue}</span>
                       </div>
                     ))}
+                    <div className="pt-2 flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConsumedNonces(new Set());
+                          handleNewNonce();
+                          setVerificationResult(null);
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-rose-900/80 hover:bg-rose-800 text-rose-200 border border-rose-700 text-xs font-bold flex items-center space-x-1.5 transition-colors"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Reset Challenge Nonce & Clear Replay Cache</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               )

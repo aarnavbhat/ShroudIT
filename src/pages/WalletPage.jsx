@@ -183,7 +183,6 @@ export default function WalletPage() {
     const base = {
       protocol: "openid4vp",
       proofId: proof.proofId,
-      // Canonical keys expected by verifyProof & OpenID4VP
       nonceBinding: proof.nonceBinding,
       verifierBinding: proof.verifierBinding,
       randomizedCommitment: proof.randomizedCommitment,
@@ -193,12 +192,7 @@ export default function WalletPage() {
       timestamp: proof.timestamp,
       issuerDid: proof.issuerDid,
       issuer: proof.issuer,
-      credentialSchema: proof.credentialSchema,
-      // Aliased short keys for universal scanner compatibility
-      nonce: proof.nonceBinding,
-      verifier: proof.verifierBinding,
-      commitment: proof.randomizedCommitment,
-      deviceProof: proof.deviceProofRaw || proof.deviceBindingSignature
+      credentialSchema: proof.credentialSchema
     };
     if (mode === 'full' && proof.rawProof) {
       base.rawProof = proof.rawProof;
@@ -342,6 +336,44 @@ export default function WalletPage() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
+  };
+
+  const handleDownloadQrPng = () => {
+    const svg = document.querySelector("#resident-qr-code svg") || document.querySelector("svg.qr-presentation-svg");
+    if (!svg) return;
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = 600;
+      canvas.height = 600;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, 600, 600);
+      ctx.drawImage(img, 0, 0, 600, 600);
+      const pngUrl = canvas.toDataURL("image/png");
+      const downloadLink = document.createElement("a");
+      downloadLink.href = pngUrl;
+      downloadLink.download = `shroudit-bbs-proof-qr.png`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+    };
+    img.src = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgData)));
+  };
+
+  const handleDownloadProofJson = () => {
+    if (!activeProof) return;
+    const jsonStr = getQrPayloadString(activeProof, qrMode);
+    const blob = new Blob([jsonStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bbs-presentation-proof.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -897,9 +929,10 @@ export default function WalletPage() {
                 <div className="p-2.5 bg-white mx-auto rounded-xl inline-block shadow-lg">
                   <QRCodeSVG
                     value={getQrPayloadString(activeProof, qrMode)}
-                    size={170}
+                    size={210}
                     level="L"
                     includeMargin={true}
+                    className="mx-auto"
                   />
                 </div>
                 <div className="flex justify-center space-x-1 text-[10px] font-mono">
@@ -914,6 +947,13 @@ export default function WalletPage() {
                     className={`px-2 py-0.5 rounded ${qrMode === 'full' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400 bg-slate-800'}`}
                   >
                     🔒 Full Proof
+                  </button>
+                  <button
+                    onClick={handleDownloadQrPng}
+                    className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 hover:text-white"
+                    title="Save QR PNG"
+                  >
+                    PNG
                   </button>
                   <button
                     onClick={handleCopyProof}
@@ -1160,21 +1200,23 @@ export default function WalletPage() {
                     </div>
 
                     {/* QR Code Presentation Box */}
-                    <div className="p-4 bg-white rounded-xl flex flex-col sm:flex-row items-center justify-center gap-4 shadow-lg shadow-cyan-950/20">
+                    <div className="p-5 bg-white rounded-2xl flex flex-col sm:flex-row items-center justify-center gap-5 shadow-xl shadow-cyan-950/30">
                       <div 
+                        id="resident-qr-code"
                         onClick={() => setEnlargeQrOpen(true)}
-                        className="p-1 bg-white rounded-lg border border-slate-200 shrink-0 cursor-pointer hover:ring-2 hover:ring-cyan-500 transition-all text-center"
+                        className="p-2 bg-white rounded-xl border-2 border-slate-200 shrink-0 cursor-pointer hover:ring-4 hover:ring-cyan-500/50 transition-all text-center shadow-inner"
                         title="Click to expand full screen"
                       >
                         <QRCodeSVG
                           value={getQrPayloadString(activeProof, qrMode)}
-                          size={185}
+                          size={240}
                           level="L"
                           includeMargin={true}
+                          className="qr-presentation-svg mx-auto"
                         />
                       </div>
 
-                      <div className="text-slate-900 text-left space-y-2 flex-1">
+                      <div className="text-slate-900 text-left space-y-2.5 flex-1 w-full">
                         <div>
                           <span className="text-[10px] font-mono uppercase font-bold text-cyan-800 block">OpenID4VP Dynamic QR</span>
                           <p className="text-xs font-semibold leading-tight">Ready for Smart Turnstile / Kiosk Tap or Camera Scan</p>
@@ -1209,15 +1251,36 @@ export default function WalletPage() {
                           </button>
                         </div>
 
+                        {/* Export Action Buttons: PNG Image & JSON */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          <button
+                            type="button"
+                            onClick={handleDownloadQrPng}
+                            className="flex-1 py-1.5 px-2.5 rounded-lg bg-slate-900 text-white text-[11px] font-bold flex items-center justify-center space-x-1 hover:bg-slate-800 transition-colors shadow-sm"
+                            title="Save crisp 600x600 PNG image of QR code to upload into Verifier"
+                          >
+                            <Download className="w-3 h-3 text-cyan-400" />
+                            <span>Save QR (.png)</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleDownloadProofJson}
+                            className="flex-1 py-1.5 px-2.5 rounded-lg bg-cyan-900 text-cyan-100 text-[11px] font-bold flex items-center justify-center space-x-1 hover:bg-cyan-800 transition-colors shadow-sm"
+                            title="Download BBS+ Proof JSON to upload into Verifier"
+                          >
+                            <FileCheck className="w-3 h-3 text-cyan-300" />
+                            <span>Download Proof (.json)</span>
+                          </button>
+                        </div>
+
                         <div className="flex items-center space-x-1.5 pt-0.5">
                           <span className="inline-block text-[9px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
                             Zero Personal Data
                           </span>
                           <span className="inline-block text-[9px] px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono font-semibold">
-                            {qrMode === 'compact' ? 'Camera-Ready (572B)' : 'Deep Audit (2.2KB)'}
+                            {qrMode === 'compact' ? 'High Contrast (Camera-Ready)' : 'Deep Audit (2.2KB)'}
                           </span>
                         </div>
-                        <p className="text-[10px] text-slate-500 italic">Click QR to enlarge or copy payload for instant tap</p>
                       </div>
                     </div>
 
