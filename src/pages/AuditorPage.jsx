@@ -194,7 +194,7 @@ export default function AuditorPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="p-4 rounded-xl bg-slate-900/90 border border-rose-900/50 text-center">
               <span className="text-[10px] text-slate-500 uppercase font-mono block">Attacker Success</span>
-              <span className="text-2xl font-extrabold font-mono text-rose-400">18 / 18 Linked</span>
+              <span className="text-2xl font-extrabold font-mono text-rose-400">{simData.baseline.linkedPairs} / {simData.totalPairwiseTests || 18} Linked</span>
               <p className="text-[11px] text-rose-300 mt-1">Single resident persona de-anonymized</p>
             </div>
             <div className="p-4 rounded-xl bg-slate-900/90 border border-rose-900/50 text-center">
@@ -226,7 +226,7 @@ export default function AuditorPage() {
                     title={`${serviceLabels[rIdx]} -> ${serviceLabels[cIdx]}: r = ${val.toFixed(2)}`}
                     className="p-2 rounded-lg bg-rose-900/60 border border-rose-600/70 text-center font-mono text-xs font-bold text-rose-200"
                   >
-                    1.00
+                    {val.toFixed(2)}
                   </div>
                 ))
               )}
@@ -258,7 +258,7 @@ export default function AuditorPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="p-4 rounded-xl bg-slate-900/90 border border-emerald-900/50 text-center">
               <span className="text-[10px] text-slate-500 uppercase font-mono block">Attacker Success</span>
-              <span className="text-2xl font-extrabold font-mono text-emerald-400">0 / 18 Linked</span>
+              <span className="text-2xl font-extrabold font-mono text-emerald-400">{simData.shroudit.linkedPairs} / {simData.totalPairwiseTests || 18} Linked</span>
               <p className="text-[11px] text-emerald-300 mt-1">18 mathematically isolated nodes</p>
             </div>
             <div className="p-4 rounded-xl bg-slate-900/90 border border-emerald-900/50 text-center">

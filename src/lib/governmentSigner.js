@@ -1,7 +1,7 @@
 /**
  * Government Digital Signature Verification Engine (ECDSA NIST P-256 / SHA-256)
  * Verifies that uploaded civic documents are genuinely signed by the accredited government authority key:
- * MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElJT2HV6b1OLXYtD51vqiI/G3qftapiaGGPzy0RYFzDzeukfnDA0SpTxnIOIYbHo3YluzCZZvyBSsxX0eiRMqmA==
+ * MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPWzb3JslJgiW2SDcKayLl6Z6/s/9sXcYh06CEb1MlsKuaVtY9ecD0/g+r1+/sstxoYWkFe9mYaKi8LjV5UtSaQ==
  *
  * Implements strict raw (r, s) to ASN.1 DER signature conversion, low-S normalization,
  * and comprehensive multi-candidate canonicalization.
@@ -10,7 +10,7 @@
 import { p256 } from '@noble/curves/nist.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 
-export const GOV_PUBLIC_KEY_BASE64 = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElJT2HV6b1OLXYtD51vqiI/G3qftapiaGGPzy0RYFzDzeukfnDA0SpTxnIOIYbHo3YluzCZZvyBSsxX0eiRMqmA==";
+export const GOV_PUBLIC_KEY_BASE64 = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPWzb3JslJgiW2SDcKayLl6Z6/s/9sXcYh06CEb1MlsKuaVtY9ecD0/g+r1+/sstxoYWkFe9mYaKi8LjV5UtSaQ==";
 
 export const GOV_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----\n${GOV_PUBLIC_KEY_BASE64}\n-----END PUBLIC KEY-----`;
 

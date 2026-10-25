@@ -77,12 +77,7 @@ export async function initWalletStorage() {
       }
     }
 
-    const receiptCount = await db.count(STORE_RECEIPTS);
-    if (receiptCount === 0) {
-      for (const receipt of INITIAL_CONSENT_RECEIPTS) {
-        await db.put(STORE_RECEIPTS, receipt);
-      }
-    }
+    const allRcpts = await db.getAll(STORE_RECEIPTS); for (const r of allRcpts) { if (r.timestamp && (r.timestamp.includes('2026-10-21') || r.timestamp.includes('21-10-2026'))) { await db.delete(STORE_RECEIPTS, r.id); } }
   } catch (err) {
     console.warn("IndexedDB init note (running in memory/fallback):", err);
   }
@@ -142,10 +137,7 @@ export async function saveCredential(cred) {
 export async function getStoredReceipts() {
   try {
     const db = await getDb();
-    const receipts = await db.getAll(STORE_RECEIPTS);
-    return receipts && receipts.length > 0 ? receipts.reverse() : INITIAL_CONSENT_RECEIPTS;
-  } catch (err) {
-    return INITIAL_CONSENT_RECEIPTS;
+    const receipts = await db.getAll(STORE_RECEIPTS); const filtered = (receipts || []).filter(r => !(r.timestamp && (r.timestamp.includes('2026-10-21') || r.timestamp.includes('21-10-2026')))); return filtered.reverse(); } catch (err) { return [];
   }
 }
 

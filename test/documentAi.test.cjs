@@ -14,7 +14,7 @@ describe("Government Document Cryptographic Verification & AI Purpose Limitation
   describe("1. Government Public Key & Signature Verification", function () {
     it("should match the exact accredited Government Authority public key", function () {
       expect(govSigner.GOV_PUBLIC_KEY_BASE64).to.equal(
-        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElJT2HV6b1OLXYtD51vqiI/G3qftapiaGGPzy0RYFzDzeukfnDA0SpTxnIOIYbHo3YluzCZZvyBSsxX0eiRMqmA=="
+        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEPWzb3JslJgiW2SDcKayLl6Z6/s/9sXcYh06CEb1MlsKuaVtY9ecD0/g+r1+/sstxoYWkFe9mYaKi8LjV5UtSaQ=="
       );
     });
 

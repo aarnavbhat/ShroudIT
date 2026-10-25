@@ -42,14 +42,6 @@ export default function JudgeTourBanner() {
       icon: Blocks,
       color: 'purple'
     },
-    {
-      num: 4,
-      path: '/auditor',
-      title: 'Adversary Proof',
-      subtitle: '0.00% Linkability & Isolation Forest',
-      icon: Cpu,
-      color: 'amber'
-    }
   ];
 
   if (!isOpen) return null;

@@ -303,30 +303,7 @@ export const ON_CHAIN_REGISTRY = {
   ]
 };
 
-export const INITIAL_CONSENT_RECEIPTS = [
-  {
-    id: "rcpt-2026-091",
-    timestamp: "2026-10-21 16:42:10 IST",
-    verifierName: "Bengaluru City Central Library",
-    purpose: "Age and residency verification for adult digital media borrowing access",
-    attributesDisclosed: ["Age ≥ 18 (True)", "Bengaluru Resident (True)"],
-    zeroPiiLeaked: true,
-    nonceHash: "0x4e892c...991a",
-    bbsProofCommitment: "0x7b119a...32fe",
-    dpdpActNotice: "Compliant with Digital Personal Data Protection Act §6 (Purpose Limitation)"
-  },
-  {
-    id: "rcpt-2026-090",
-    timestamp: "2026-10-21 14:15:22 IST",
-    verifierName: "Namma Metro - Majestic Interchange Gate",
-    purpose: "Instant validation of student transit concession",
-    attributesDisclosed: ["Active Student Status (True)", "Tier 1 Concession (True)"],
-    zeroPiiLeaked: true,
-    nonceHash: "0x12fa88...67dc",
-    bbsProofCommitment: "0x91df42...55ba",
-    dpdpActNotice: "Compliant with Digital Personal Data Protection Act §6 (Purpose Limitation)"
-  }
-];
+export const INITIAL_CONSENT_RECEIPTS = [];
 
 export const EXPLAINER_TRANSLATIONS = {
   en: {

@@ -156,15 +156,7 @@ export default function WalletView({ onPresentProofToVerifier }) {
               <p className="text-xs text-slate-400">Select a credential and toggle which predicates you want to disclose</p>
             </div>
 
-            {/* Rogue verifier test button */}
-            <button
-              onClick={handleSimulateOverAsking}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-950/60 text-rose-300 border border-rose-800/80 hover:bg-rose-900/80 transition-all shadow-sm"
-              title="Test Over-asking Attack Protection"
-            >
-              <Ban className="w-3.5 h-3.5 text-rose-400" />
-              <span>Simulate Over-Asking Attack</span>
-            </button>
+            
           </div>
 
           {/* Over-Asking Warning Banner (If Triggered) */}

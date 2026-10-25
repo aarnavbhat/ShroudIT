@@ -12,7 +12,6 @@ export default function Navbar({ onResetDemo }) {
     { to: '/documents', label: 'Gov Ingestion', icon: FileCheck, badge: 'AI Verified' },
     { to: '/verifier', label: 'City Verifier', icon: Building2, badge: 'OpenID4VP' },
     { to: '/blockchain', label: 'Trust On-Chain', icon: Blocks, badge: 'Hardhat L2' },
-    { to: '/auditor', label: 'AI Linkability Auditor', icon: Cpu, badge: 'Core Claim' },
   ];
 
   return (

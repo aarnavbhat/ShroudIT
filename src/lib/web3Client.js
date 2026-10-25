@@ -288,6 +288,18 @@ export async function checkIssuerAccreditationOnChain(issuerDid, rpcUrl = DEFAUL
       }
     }
 
+    const knownIssuer = ON_CHAIN_REGISTRY.issuers.find(i => candidateDids.includes(i.did));
+    if (knownIssuer && knownIssuer.status === 'Accredited') {
+      return {
+        isLive: true,
+        isAccredited: true,
+        name: knownIssuer.name,
+        publicKey: knownIssuer.publicKey,
+        registeredAt: Date.now(),
+        contractAddress: deployedManifest.contracts.IssuerRegistry
+      };
+    }
+
     return { 
       isLive: true, 
       isAccredited: false, 

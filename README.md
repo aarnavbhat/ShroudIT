@@ -3,7 +3,7 @@
 > **ChronoForge Hackathon — Cybersecurity Track (Cities of the Future)**  
 > *"Selective disclosure is not the new part. **Measurable privacy is.**"*
 
-[![Hardhat Test Suite](https://img.shields.io/badge/Hardhat_Tests-35%2F35_Passing-brightgreen)](file:///test/e2e.test.cjs)
+[![Hardhat Test Suite](https://img.shields.io/badge/Hardhat_Tests-96%2F96_Passing-brightgreen)](file:///test/e2e.test.cjs)
 [![Cryptography](https://img.shields.io/badge/Cryptography-BLS12--381_BBS%2B-blue)](file:///src/lib/bbsEngine.js)
 [![AI Engine](https://img.shields.io/badge/AI_Engine-Isolation_Forest-purple)](file:///src/lib/aiAnomalyEngine.js)
 [![Client Enclave](https://img.shields.io/badge/Client_Storage-IndexedDB_AES--256--GCM-teal)](file:///src/lib/walletStorage.js)
@@ -186,7 +186,7 @@ cd ShroudIT
 npm install --legacy-peer-deps
 ```
 
-### 2. Run Comprehensive Test Suite (35 Tests Passing)
+### 2. Run Comprehensive Test Suite (96 Tests Passing)
 ```bash
 npm test
 ```
@@ -244,7 +244,7 @@ Outputs:
     4. DocumentVerifier (Merkle Path Inclusion Proofs)
       ✔ should verify cryptographic inclusion proof for document credentials
 
-  35 passing
+  96 passing
 ```
 
 ### 3. Deploy Smart Contracts to Local Hardhat Node

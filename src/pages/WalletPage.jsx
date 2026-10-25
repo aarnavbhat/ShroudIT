@@ -1111,13 +1111,7 @@ export default function WalletPage() {
                   <Sparkles className="w-4 h-4 text-cyan-400" />
                   <span>AI Consent Explainer</span>
                 </button>
-                <button
-                  onClick={handleSimulateOverAsking}
-                  className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-rose-950/60 text-rose-300 border border-rose-800 hover:bg-rose-900/80 transition-all shadow-sm"
-                >
-                  <Ban className="w-4 h-4 text-rose-400" />
-                  <span>Simulate Over-Asking Attack</span>
-                </button>
+                
               </div>
             </div>
           </div>
